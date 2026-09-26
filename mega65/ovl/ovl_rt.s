@@ -23,6 +23,8 @@
 	.zeropage	__ovl_id
 	.zeropage	__ovl_sa
 	.zeropage	__ovl_sx
+	.zeropage	__ovl_mid
+	.zeropage	__ovl_mb
 
 	.section	.zp.bss,"aw",@nobits
 	.globl	__ovl_p
@@ -35,6 +37,8 @@ __ovl_id:	.zero	1
 __ovl_sa:	.zero	1
 	.globl	__ovl_sx
 __ovl_sx:	.zero	1
+__ovl_mid:	.zero	1		; (__ovl_map's overlay id)
+__ovl_mb:	.zero	1		; the lower region's megabyte now
 
 	.section	.bss.__ovl_cur,"aw",@nobits
 	.globl	__ovl_cur
@@ -42,10 +46,26 @@ __ovl_cur:	.zero	1
 
 	.section	.text.__ovl_map,"ax",@progbits
 ; A = overlay id -> map it into the window. Clobbers A, X, Y.
+; Overlays run from attic RAM (MB $81) or, the hot ones, from chip RAM
+; (MB 0; see ovlgen.py): the lower region's megabyte is selected first when
+; it changes (a MAP with X = $0F), then the offset. (Selecting the megabyte
+; keeps the old offset for a moment: harmless, as this code is not in the
+; window.)
 	.globl	__ovl_map
 __ovl_map:
+	sta	__ovl_mid
 	tay
-	lda	__ovl_tab_x,y
+	lda	__ovl_tab_mb,y
+	cmp	__ovl_mb
+	beq	1f
+	sta	__ovl_mb
+	ldx	#$0f
+	ldy	#0
+	ldz	#0
+	map
+	eom
+	ldy	__ovl_mid
+1:	lda	__ovl_tab_x,y
 	tax
 	lda	__ovl_tab_a,y
 	ldy	#0
@@ -72,6 +92,7 @@ __ovl_setmb:
 	map
 	eom
 	lda	#$81
+	sta	__ovl_mb
 	ldx	#$0f
 	ldy	#$00
 	ldz	#$00

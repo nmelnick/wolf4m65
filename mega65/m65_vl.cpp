@@ -88,10 +88,12 @@ void VL_SetVGAPlaneMode (void)
 
     scaleFactor = 1;
 
-    pixelangle = (short *) malloc(screenWidth * sizeof(short));
-    CHECKMALLOCRESULT(pixelangle);
-    wallheight = (int *) malloc(screenWidth * sizeof(int));
-    CHECKMALLOCRESULT(wallheight);
+    // (in chip RAM: see wl_def.h)
+    farptr pa = far_alloc_chip(pixelangle.bytes()), wh = far_alloc_chip(wallheight.bytes());
+    if (FAR_ISNULL(pa) || FAR_ISNULL(wh))
+        Quit("Out of chip far memory");
+    pixelangle.init(pa);
+    wallheight.init(wh);
 }
 
 /*

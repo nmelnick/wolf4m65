@@ -1156,7 +1156,14 @@ int DebugKeys (void);
 //
 // math tables
 //
+#ifdef MEGA65
+// In chip RAM (near memory is short): a view column's angle and wall height.
+extern  FarArray<short, M65_SCREEN_W> pixelangle;
+extern  FarArray<int, M65_SCREEN_W> wallheight;
+#else
 extern  short *pixelangle;
+extern  int *wallheight;
+#endif
 #ifdef MEGA65
 // In far (chip) memory, precomputed on the host (TABLES.BIN, see
 // tools/gen_tables.py); they behave like the arrays (m65_fararray.hpp).
@@ -1169,7 +1176,6 @@ extern  int32_t finetangent[FINEANGLES/4];
 extern  fixed sintable[];
 extern  fixed *costable;
 #endif
-extern  int *wallheight;
 extern  word horizwall[],vertwall[];
 extern  int32_t    lasttimecount;
 extern  int32_t    frameon;

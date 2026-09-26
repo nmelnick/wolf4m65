@@ -124,9 +124,18 @@ $(GB)/why.txt: $(GAMEASM) $(RESIDENT) tools/ovlgen.py
 $(GB)/lib/overlay.txt: $(GB)/why.txt $(RESIDENT) tools/libsplit.py
 	python3 tools/libsplit.py --why $< --out $(GB)/lib $(RESIDENT)
 
-$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py
+# Code runs about 16 times slower from attic RAM than from chip RAM on the
+# real machine (hwtest.c), so the hot code goes in overlays that run from
+# chip RAM ($20000-$3FFFF, 16 slots): first the functions in hot.txt (by time
+# spent in the demo: make hotlist), then the files in HOTFILES, in order.
+CHIPSLOTS = 16
+HOTFILES  = wl_act2,wl_agent,wl_act1,wl_state,wl_play,wl_draw,m65_vl,m65_kbd,m65_sdl,\
+            m65_surf,id_pm,id_in,id_vh,id_us_1,m65_huff,m65_mapexp,divmod_cc_obj,wl_game
+
+$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py hot.txt
 	rm -f $(GB)/*.ovl.s
 	python3 tools/ovlgen.py --out $(GB) --resident-funcs main \
+	  --chip-slots $(CHIPSLOTS) --hot hot.txt --hot-files '$(subst $(eval) ,,$(HOTFILES))' \
 	  --extern-objs $$(echo $(RESIDENT) $$(sed 's/\.s$$/.o/' $(GB)/lib/resident.txt) | tr ' ' ',') \
 	  $(GAMEASM) $$(cat $(GB)/lib/overlay.txt)
 
@@ -208,13 +217,14 @@ $(OT)/main.o: ovltest/main.c ovltest/ovltest.h
 	$(CC) -Os -fno-lto -Wall -I. -c -o $@ $<
 
 $(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s $(OT)/main.o tools/ovlgen.py
-	python3 tools/ovlgen.py --out $(OT) --per-file --extern-objs $(OT)/main.o \
+	python3 tools/ovlgen.py --out $(OT) --per-file --chip-slots 1 --hot-files ov1 \
+	  --extern-objs $(OT)/main.o \
 	  $(OT)/ov1.s $(OT)/ov2.s
 
-ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
+ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c m65_far.c
 	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ $(OT)/main.o \
 	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
-	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
+	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c m65_far.c
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
 	llvm-objcopy -O binary --only-section=.rodata_far --only-section=.midtext --only-section=.data $@.elf $(OT)/OVLTEST.DAT
 
@@ -360,9 +370,14 @@ profile: PROFILE = 1
 profile: FRAME ?= 60
 profile: wolf.prg $(SDIMG) $(MUSICDATA)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
-	python3 tools/xrun.py 600 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	python3 tools/xrun.py 300 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem
 	python3 tools/profile.py wolf.prg.elf profile.mem
+
+# hot.txt from a profile of the first 1000 demo frames.
+hotlist: FRAME = 1000
+hotlist: profile
+	python3 tools/profile.py wolf.prg.elf profile.mem 0 --hot hot.txt
 
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
@@ -427,4 +442,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi fps profile sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps profile hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

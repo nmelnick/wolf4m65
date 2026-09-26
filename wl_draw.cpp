@@ -45,13 +45,21 @@ boolean fpscounter;
 
 int fps_frames=0, fps_time=0, fps=0;
 
+#ifdef MEGA65
+FarArray<int, M65_SCREEN_W> wallheight;       // (storage: VL_SetVGAPlaneMode)
+#else
 int *wallheight;
+#endif
 int min_wallheight;
 
 //
 // math tables
 //
+#ifdef MEGA65
+FarArray<short, M65_SCREEN_W> pixelangle;
+#else
 short *pixelangle;
+#endif
 #ifdef MEGA65
 FarArray<int32_t, FINEANGLES/4> finetangent;       // set up by BuildTables
 FarArray<fixed, ANGLES+ANGLES/4> sintable;

@@ -9,20 +9,26 @@
 ; BRK (the B flag in the pushed status) goes on to m65_irq's report.
 ; Resident: it may interrupt any overlay.
 
-	.zeropage	__prof_p
+	.zeropage	__prof_p, __prof_sp, __prof_pcl
 
 	.section	.zp.bss,"aw",@nobits
 __prof_p:	.zero	4
+__prof_sp:	.zero	2		; (the stack pointer: 16 bits)
+__prof_pcl:	.zero	1
 
-	.section	.text.m65_prof_irq,"ax",@progbits
+	.section	.midtext.m65_prof_irq,"ax",@progbits	; (resident, in main memory)
 	.globl	m65_prof_irq
 m65_prof_irq:
 	pha
 	phx
 	phy
 	phz
-	tsx
-	lda	$0105,x			; pushed status
+	tsx				; the pushed status: 16-bit stack
+	stx	__prof_sp
+	tsy
+	sty	__prof_sp+1
+	ldy	#5
+	lda	(__prof_sp),y
 	and	#$10
 	beq	1f
 	plz				; a BRK: report it as before
@@ -30,8 +36,12 @@ m65_prof_irq:
 	plx
 	pla
 	jmp	m65_irq
-1:	lda	$0107,x			; PC high
-	ldy	$0106,x			; PC low
+1:	ldy	#6			; PC low
+	lda	(__prof_sp),y
+	sta	__prof_pcl
+	ldy	#7			; PC high
+	lda	(__prof_sp),y
+	ldy	__prof_pcl
 	cmp	#$40
 	bcc	2f
 	cmp	#$60

@@ -17,8 +17,8 @@
 // --- what the tested code needs from the rest of the game ---------------------
 boolean       param_ignorenumchunks = false;
 SDMode        SoundMode;
-short        *pixelangle;
-int          *wallheight;
+FarArray<short, M65_SCREEN_W> pixelangle;
+FarArray<int, M65_SCREEN_W> wallheight;
 extern int    numEpisodesMissing;
 extern SDL_Color curpal[256];
 void CAL_SetupGrFile (void);

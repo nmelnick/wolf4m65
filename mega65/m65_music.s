@@ -11,11 +11,12 @@
 ; In section .midtext: resident code in main memory (loaded with WOLF.DAT),
 ; since the interrupt may come while any overlay is mapped.
 
-	.zeropage	m65_mus_p
+	.zeropage	m65_mus_p, m65_mus_sp
 
 	.section	.zp.bss,"aw",@nobits
 	.globl	m65_mus_p
 m65_mus_p:	.zero	4		; the next record
+m65_mus_sp:	.zero	2		; (the stack pointer: 16 bits)
 
 	.section	.bss.m65_music,"aw",@nobits
 	.globl	m65_mus_start, m65_mus_wait, m65_mus_on
@@ -30,8 +31,12 @@ m65_music_irq:
 	phx
 	phy
 	phz
-	tsx
-	lda	$0105,x			; pushed status
+	tsx				; the pushed status: 16-bit stack
+	stx	m65_mus_sp
+	tsy
+	sty	m65_mus_sp+1
+	ldy	#5
+	lda	(m65_mus_sp),y
 	and	#$10
 	beq	1f
 	plz				; a BRK: report it as before

@@ -25,9 +25,14 @@ extern char __highbss_start[], __highbss_size[];
 extern char __lowbss_start[], __lowbss_size[];
 extern char __prgbss_start[], __prgbss_size[];
 
-// NMI (RESTORE key): ignore. IRQ/BRK: interrupts are off, so this is a BRK,
-// i.e. a jump into zeroed memory: report it and stop with a red border.
+// NMI (RESTORE key): ignore. IRQ/BRK: a BRK (the timer interrupts have
+// their own handlers, which pass BRKs on here), i.e. a jump into zeroed
+// memory: report it and stop with a red border. The stack is anywhere (16-bit
+// stack pointer): the pushed return address is read through m65_irq_p.
 __asm__(
+    ".zeropage m65_irq_p\n"
+    ".section .zp.bss,\"aw\",@nobits\n"
+    "m65_irq_p: .zero 2\n"
     ".section .text.m65_vectors,\"ax\",@progbits\n"
     "m65_nmi:\n"
     "    rti\n"
@@ -39,9 +44,9 @@ __asm__(
     "    lda #'K'\n sta $d643\n clv\n"
     "    lda #' '\n sta $d643\n clv\n"
     // The return address pushed by BRK (the BRK's address + 2), in hex.
-    "    tsx\n"
-    "    lda $0103,x\n jsr m65_hex\n"
-    "    lda $0102,x\n jsr m65_hex\n"
+    "    tsx\n stx m65_irq_p\n tsy\n sty m65_irq_p+1\n"
+    "    ldy #3\n lda (m65_irq_p),y\n jsr m65_hex\n"
+    "    ldy #2\n lda (m65_irq_p),y\n jsr m65_hex\n"
     "    lda #13\n sta $d643\n clv\n"
     "    lda #10\n sta $d643\n clv\n"
     "1:  lda #2\n sta $d020\n"
@@ -53,9 +58,31 @@ __asm__(
 
 extern char m65_nmi[], m65_irq[];
 
+// The CPU stack's page (SPH) and pointer when the program started, and where
+// it moves to (see m65_takeover).
+uint8_t m65_boot_sph, m65_boot_spl;
+uint16_t m65_new_sp;
+extern char __hwstack_top[];
+
 void m65_takeover(void)
 {
     __asm__ volatile("sei");
+
+    // The hardware stack: it starts in page $01 with about 225 bytes left,
+    // and the CPU runs it in 16-bit mode, so running out does not wrap in
+    // the page but goes on down through the zero page (the compiler's
+    // registers). With overlays each call across them costs 5 more bytes,
+    // and deep call chains did run out. Move it to the 512 bytes at the top
+    // of mid (__hwstack_top, see ovlgen.py): copy what is on it (return
+    // addresses and all) and point the stack pointer there, in 16-bit mode.
+    __asm__ volatile("tsy\n sty m65_boot_sph\n tsx\n stx m65_boot_spl\n" ::: "x", "y");
+    {
+        uint16_t sp = (uint16_t)m65_boot_sph << 8 | m65_boot_spl;
+        uint16_t used = ((uint16_t)m65_boot_sph << 8 | 0xFF) - sp;
+        m65_new_sp = (uint16_t)(uintptr_t)__hwstack_top - used;
+        m65_dma_copy(m65_new_sp + 1, sp + 1, used);
+        __asm__ volatile("ldx m65_new_sp\n txs\n ldy m65_new_sp+1\n tys\n cle\n" ::: "x", "y");
+    }
 
     // No MAPping, and the C64-style ROMs banked out: RAM at $A000-$BFFF and
     // $E000-$FFFF, I/O at $D000.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Where the time goes: read the sampling profiler's counts (make profile).
 
-usage: profile.py PROGRAM.elf MEMDUMP [TOP]
+usage: profile.py PROGRAM.elf MEMDUMP [TOP] [--hot FILE]
 
 The counts (see m65_prof.s) are in the memory dump at $40000: 4096 16-bit
 counters for the 64KB address space in 16-byte buckets, then 512 per overlay
@@ -21,8 +21,14 @@ BIN = os.path.expanduser("~/opt/llvm-mos/bin")
 COPY = 0x40000
 WBASE, WEND = 0x4000, 0x6000
 
-elf, dump = sys.argv[1], sys.argv[2]
-top = int(sys.argv[3]) if len(sys.argv) > 3 else 30
+args = sys.argv[1:]
+hotfile = None
+if "--hot" in args:
+    i = args.index("--hot")
+    hotfile = args[i + 1]
+    del args[i:i + 2]
+elf, dump = args[0], args[1]
+top = int(args[2]) if len(args) > 2 else 30
 mem = open(dump, "rb").read()
 
 # Functions: (start, name) per region: None = outside the window, K = overlay K.
@@ -79,6 +85,15 @@ names = demangle([n.removesuffix(".body") for _, n in count])
 print(f"\n{'samples':>8} {'%':>6}  where")
 for (region, name), n in count.most_common(top):
     print(f"{n:8d} {100 * n / total:6.1f}  {region:7s} {names.get(name.removesuffix('.body'), name)}")
+if hotfile:
+    # The overlay functions by time spent, for ovlgen --hot (chip RAM slots).
+    hot = [n.removesuffix(".body") for (region, n), _ in count.most_common()
+           if region.startswith("ovl")]
+    with open(hotfile, "w") as f:
+        f.write("# Overlay functions by time spent (make hotlist): ovlgen puts them\n"
+                "# first into the overlays that run from chip RAM.\n")
+        f.write("\n".join(hot) + "\n")
+    print(f"wrote {hotfile}: {len(hot)} functions")
 print("\nby region:")
 for r, n in regions.most_common(12):
     print(f"{n:8d} {100 * n / total:6.1f}  {r}")
