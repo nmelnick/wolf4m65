@@ -33,6 +33,27 @@ size: wolf-objs
 	@for f in $(WOLFOBJS); do llvm-size -A $$f; done | \
 	  awk '/^\./ {split($$1,a,"."); s[a[2]]+=$$2} END {for (k in s) print s[k], k}' | sort -rn
 
+# --- Tests that need an SD card ---------------------------------------------
+# Xemu boots the real Hyppo firmware from a copy of your Xemu SD image; the
+# files in testsd/ are copied into the copy's root directory.
+
+XEMUDIR ?= $(HOME)/.local/share/xemu-lgb/mega65
+SDIMG    = build/sd.img
+
+$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*)
+	@mkdir -p build
+	cp --sparse=always $< $@
+	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* s:
+
+dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
+	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c
+
+test-dos: dostest.prg $(SDIMG)
+	timeout 90 $(XEMU) $(XEMUFLAGS) -sdimg $(SDIMG) -prg dostest.prg \
+	  -dumpmem dostest.mem > dostest.log 2>&1 || true
+	python3 tools/check_dostest.py dostest.mem
+
 all: hello.prg vtest.prg
 
 hello.prg: hello.c
@@ -46,6 +67,6 @@ shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
 
 clean:
-	rm -f *.prg *.elf *.o *.png *.mem; rm -rf obj
+	rm -f *.prg *.elf *.o *.png *.mem *.log; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size
+.PHONY: all clean shot wolf-objs size test-dos

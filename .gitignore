@@ -226,3 +226,7 @@ mega65/proto/*.elf
 mega65/proto/*.o
 mega65/proto/*.png
 mega65/proto/*.mem
+mega65/testsd/MEGA65.ROM
+mega65/*.log
+mega65/build/
+mega65/testsd/mega65.d81
