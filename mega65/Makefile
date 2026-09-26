@@ -21,7 +21,8 @@ WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
             -DVERSIONALREADYCHOSEN -DCARMACIZED -DUPLOAD -DMEGA65 -DNDEBUG \
-            -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch
+            -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch \
+            -mllvm -replexitval=never
 
 obj/%.o: $(WOLFDIR)/%.cpp m65_compat.h SDL.h
 	@mkdir -p obj
@@ -44,8 +45,8 @@ GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
 GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_surf m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
-RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c
-RESIDENT  = $(GB)/ovl_rt.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
+RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
+RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 
 # make OVLTRACE=1: log every overlay call on the serial port (slow).
 OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
@@ -53,6 +54,10 @@ comma = ,
 $(GB)/ovltrace.stamp: FORCE
 	@mkdir -p $(GB)
 	@echo '$(OVLTRACE)' | cmp -s - $@ || echo '$(OVLTRACE)' > $@
+$(GB)/m65_prof.o: m65_prof.s
+	@mkdir -p $(GB)
+	$(CC) -c -fno-lto -o $@ $<
+
 $(GB)/ovl_rt.o: ovl/ovl_rt.s $(GB)/ovltrace.stamp
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto $(OVLRTFLAGS) -o $@ $<
@@ -92,9 +97,10 @@ FORCE:
 # m65_test.c and "Host reference" below).
 $(GB)/frame.stamp: FORCE
 	@mkdir -p $(GB)
-	@echo '$(FRAME)' | cmp -s - $@ || echo '$(FRAME)' > $@
+	@echo '$(FRAME) $(PROFILE)' | cmp -s - $@ || echo '$(FRAME) $(PROFILE)' > $@
 $(GB)/m65_test.s: m65_test.c $(M65HDRS) $(GB)/frame.stamp
-	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(FRAME),-DM65_FRAMEDUMP=$(FRAME)) -S -o $@ $<
+	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(FRAME),-DM65_FRAMEDUMP=$(FRAME)) \
+	  $(if $(PROFILE),-DM65_PROFILE) -S -o $@ $<
 
 # Stage 1: a probe link of the game's code alone, to learn which library
 # members it pulls in. Stage 2: libsplit compiles those (bitcode) to
@@ -319,6 +325,17 @@ fps: RUNSECS = 150
 fps: run-wolf
 	@tr -d '\r' < wolf.ser | grep -a '^FPS' || true
 
+# Where the time goes: sample the CPU from demo frame 1 to FRAME (default
+# 60) and list the busiest functions (m65_prof.s, tools/profile.py).
+profile: KEYS = {6000,0x3C},{6300,0x7F}
+profile: PROFILE = 1
+profile: FRAME ?= 60
+profile: wolf.prg $(SDIMG)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
+	python3 tools/xrun.py 600 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem
+	python3 tools/profile.py wolf.prg.elf profile.mem
+
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
 run-xemu: wolf.prg $(SDIMG)
@@ -382,4 +399,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi fps sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps profile sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

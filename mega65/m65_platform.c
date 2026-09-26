@@ -31,6 +31,7 @@ __asm__(
     ".section .text.m65_vectors,\"ax\",@progbits\n"
     "m65_nmi:\n"
     "    rti\n"
+    ".globl m65_irq\n"
     "m65_irq:\n"
     "    sei\n"
     "    lda #'B'\n sta $d643\n clv\n"

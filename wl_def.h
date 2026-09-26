@@ -1432,10 +1432,18 @@ void GP2X_ButtonUp(int button);
 =============================================================================
 */
 
+#ifdef MEGA65
+#include "m65_math.h"
+static inline fixed FixedMul(fixed a, fixed b)
+{
+	return m65_fixedmul(a, b);      // the same, on the hardware multiplier
+}
+#else
 static inline fixed FixedMul(fixed a, fixed b)
 {
 	return (fixed)(((int64_t)a * b + 0x8000) >> 16);
 }
+#endif
 
 #ifdef PLAYDEMOLIKEORIGINAL
     #define DEMOCHOOSE_ORIG_SDL(orig, sdl) ((demorecord || demoplayback) ? (orig) : (sdl))

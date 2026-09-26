@@ -8,11 +8,45 @@
 //   - Built with -DM65_FRAMEDUMP=N (make FRAME=N check-frame), it stops at
 //     demo frame N and says TEST-DONE, so that a memory dump holds that
 //     frame (the draw buffer at $50000) for tools/check_frame.py.
+//   - Built with -DM65_PROFILE as well (make profile), it samples where the
+//     CPU is from demo frame 1 to frame N (m65_prof.s) and at frame N copies
+//     the counts to $40000 for tools/profile.py.
 
 #include <stdint.h>
 
 #include "SDL.h"
 #include "m65_debug.h"
+#include "m65_video.h"
+
+#ifdef M65_PROFILE
+#define PROF_BASE  0x87F0000UL      // the counters, in attic RAM (see m65_prof.s)
+#define PROF_BYTES (8192U + 44U * 1024U)
+#define PROF_COPY  0x40000UL        // where the memory dump finds them
+
+extern char m65_prof_irq[];
+
+static void prof_start(void)
+{
+    m65_dma_fill(PROF_BASE, 0, PROF_BYTES);
+    *(volatile uint16_t *)0xFFFE = (uint16_t)(uintptr_t)m65_prof_irq;
+    *(volatile uint8_t *)0xD01A = 0;        // no VIC interrupts
+    *(volatile uint8_t *)0xD019 = 0xFF;
+    *(volatile uint8_t *)0xDC0D = 0x7F;     // CIA 1: only timer A,
+    *(volatile uint8_t *)0xDC04 = 999 & 0xFF;   // every 1000 cycles (1ms at 1MHz)
+    *(volatile uint8_t *)0xDC05 = 999 >> 8;
+    *(volatile uint8_t *)0xDC0E = 0x11;     // load, start, continuous
+    (void)*(volatile uint8_t *)0xDC0D;
+    *(volatile uint8_t *)0xDC0D = 0x81;
+    __asm__ volatile("cli");
+}
+
+static void prof_stop(void)
+{
+    __asm__ volatile("sei");
+    *(volatile uint8_t *)0xDC0D = 0x7F;
+    m65_dma_copy(PROF_COPY, PROF_BASE, PROF_BYTES);
+}
+#endif
 
 static void put_uint(uint32_t v)
 {
@@ -32,6 +66,8 @@ static void put_str(const char *s)
         m65_debug_putc(*s++);
 }
 
+extern int8_t fpscounter;       // wl_draw.cpp
+
 void FrameDumpHook(void)
 {
     static uint16_t frame;
@@ -39,8 +75,15 @@ void FrameDumpHook(void)
     Uint32 now = SDL_GetTicks();
 
     frame++;
-    if (frame == 1)
+    if (frame == 1) {
         start = now;
+#ifdef M65_FRAMEDUMP
+        fpscounter = 0;         // (the host's frames have no frame rate counter)
+#endif
+#ifdef M65_PROFILE
+        prof_start();
+#endif
+    }
     else if (frame % 100 == 1) {
         Uint32 ms = now - start;
         put_str("FPS: frames ");
@@ -58,6 +101,9 @@ void FrameDumpHook(void)
     }
 #ifdef M65_FRAMEDUMP
     if (frame == M65_FRAMEDUMP) {
+#ifdef M65_PROFILE
+        prof_stop();
+#endif
         m65_debug_puts("TEST-DONE");
         for (;;)
             ;
