@@ -86,6 +86,11 @@ void VL_FarPlanarToScreen (farptr pic);
 // Draw a 320x200 linear (row-major) picture from far memory.
 void VL_FarLinearToScreen (farptr pic);
 
+// Counts changes to curpal made by anything other than VL_SetPalette(curpal)
+// (other palettes, fades, fills), so code that builds a palette in curpal
+// can tell whether it is still there (see BuildShift in wl_play.cpp).
+extern unsigned vl_curpalchanges;
+
 #else
 
 void VL_MungePic                (byte *source, unsigned width, unsigned height);

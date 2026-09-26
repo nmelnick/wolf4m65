@@ -785,7 +785,7 @@ void HelpScreens (void)
     artnum = helpextern;
     CA_CacheGrChunk (artnum);
 #ifdef MEGA65
-    text = grsegs[artnum];
+    text = (farptr) grsegs[artnum];
 #else
     text = (char *)grsegs[artnum];
 #endif
@@ -841,7 +841,7 @@ void EndText (void)
     artnum = endextern+gamestate.episode;
     CA_CacheGrChunk (artnum);
 #ifdef MEGA65
-    text = grsegs[artnum];
+    text = (farptr) grsegs[artnum];
 #else
     text = (char *)grsegs[artnum];
 #endif

@@ -9,6 +9,7 @@
 #include "m65_far.h"
 #include "m65_farword.hpp"
 #include "m65_fargrid.hpp"
+#include "m65_fararray.hpp"
 #include "m65_video.h"
 
 #define N 8                         // grid size (the game's is 64)
@@ -108,6 +109,45 @@ int main (void)
     for (x = 0; x < N; x++)
         for (y = 0; y < N; y++)
             check(fargrid[x][y] == neargrid[x][y], 30);  // whole grid agrees
+
+    // --- FarArray -----------------------------------------------------------------
+    {
+        static FarArray<int32_t, 16> fa32;
+        static FarArray<farptr, 8> fap;
+        static FarArray<int16_t, 8> fa16;
+        int32_t n32[16];
+        fa32.init(far_alloc_chip(fa32.bytes()));
+        fap.init(far_alloc_chip(fap.bytes()));
+        fa16.init(far_alloc_chip(fa16.bytes()));
+        check((int32_t) fa32[3] == 0 && FAR_ISNULL(fap[5]) && (int16_t) fa16[7] == 0, 40);
+        for (i = 0; i < 16; i++) {
+            n32[i] = (int32_t) i * -123457L + 0x12345678L;
+            fa32[i] = n32[i];
+        }
+        for (i = 0; i < 16; i++)
+            check(fa32[i] == n32[i], 41);                // 4-byte flat reads
+        fa32[1] = fa32[2] = -65536;                      // chained, like BuildTables
+        check(fa32[1] == -65536 && fa32[2] == -65536, 42);
+        fa32[0] = fa32[5];                               // value copy
+        check(fa32[0] == n32[5], 43);
+        check(-fa32[3] == -n32[3] && fa32[4] * 2 == n32[4] * 2, 44);   // arithmetic
+        fap[2] = FAR(0x8123456UL);
+        check(!FAR_ISNULL(fap[2]) && FAR_ADD(fap[2], 4).a == 0x812345AUL, 45);  // farptr
+        fa16[3] = (int16_t) -1234;
+        check((int16_t) fa16[3] == -1234, 46);           // 2-byte, signed
+        // A view starting 4 elements in (as costable overlays sintable).
+        {
+            static FarArray<int32_t, 16> whole;
+            static FarArray<int32_t, 12> view;
+            farptr base = far_alloc_chip(whole.bytes());
+            whole.init(base);
+            for (i = 0; i < 16; i++)
+                whole[i] = n32[i];
+            view.use(FAR_ADD(base, 4 * sizeof(int32_t)));
+            for (i = 0; i < 12; i++)
+                check(view[i] == n32[i + 4], 47);
+        }
+    }
 
     struct { uint8_t magic; uint8_t firstfail; uint16_t fails, checks; } rep =
         { 0xEE, firstfail, fails, checks };

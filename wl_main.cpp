@@ -712,6 +712,32 @@ void ShutdownId (void)
 
 const float radtoint = (float)(FINEANGLES/2/PI);
 
+#ifdef MEGA65
+
+//
+// The tables are computed on the host by the original code below (see
+// mega65/tools/gen_tables.py) and loaded into chip RAM: no floating point.
+//
+void BuildTables (void)
+{
+    uint32_t size;
+    farptr tables = m65_file_far ("tables.bin", &size);
+    farptr chip;
+
+    if (FAR_ISNULL(tables) || size != finetangent.bytes() + sintable.bytes())
+        CA_CannotOpen ("tables.bin");
+    chip = far_alloc_chip (size);
+    if (FAR_ISNULL(chip))
+        Quit ("Out of chip far memory");
+    far_copy (chip, tables, size);
+
+    finetangent.use (chip);
+    sintable.use (FAR_ADD(chip, finetangent.bytes()));
+    costable.use (FAR_ADD(chip, finetangent.bytes() + (ANGLES/4) * sizeof(fixed)));
+}
+
+#else
+
 void BuildTables (void)
 {
     //
@@ -747,6 +773,8 @@ void BuildTables (void)
     Init3DPoints();
 #endif
 }
+
+#endif // MEGA65
 
 //===========================================================================
 
@@ -1696,6 +1724,11 @@ static void DemoLoop()
 
 void CheckParameters(int argc, char *argv[])
 {
+#ifdef MEGA65
+    // No command line on the MEGA65: keep the defaults (and leave the usage
+    // text and parsing out of memory).
+    (void) argc; (void) argv;
+#else
     bool hasError = false, showHelp = false;
     bool sampleRateGiven = false, audioBufferGiven = false;
     int defaultSampleRate = param_samplerate;
@@ -1951,6 +1984,7 @@ void CheckParameters(int argc, char *argv[])
 
     if(sampleRateGiven && !audioBufferGiven)
         param_audiobuffer = 2048 / (44100 / param_samplerate);
+#endif
 }
 
 /*

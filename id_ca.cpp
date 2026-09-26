@@ -73,9 +73,9 @@ int     mapon;
 mapptr  mapsegs[MAPPLANES];
 static maptype* mapheaderseg[NUMMAPS];
 #ifdef MEGA65
-farptr  audiosegs[NUMSNDCHUNKS];
-farptr  grsegs[NUMCHUNKS];
+FarArray<farptr, NUMCHUNKS> grsegs;     // storage in chip RAM (CAL_SetupGrFile)
 static farptr grfar, audiofar, mapfar;  // VGAGRAPH, AUDIOT, GAMEMAPS in attic
+static farptr grheadfar, audioheadfar;  // VGAHEAD, AUDIOHED: offsets read in place
 #else
 byte    *audiosegs[NUMSNDCHUNKS];
 byte    *grsegs[NUMCHUNKS];
@@ -106,8 +106,10 @@ static const char afilename[] = "audiot.";
 
 void CA_CannotOpen(const char *string);
 
+#ifndef MEGA65       // (read in place from VGAHEAD / AUDIOHED on the MEGA65)
 static int32_t  grstarts[NUMCHUNKS + 1];
 static int32_t* audiostarts; // array of offsets in audio / audiot
+#endif
 
 #ifdef GRHEADERLINKED
 huffnode *grhuffman;
@@ -124,11 +126,26 @@ int32_t   chunkcomplen,chunkexplen;
 SDMode oldsoundmode;
 
 
+#ifdef MEGA65
+static int32_t GRFILEPOS(const size_t idx)
+{
+	assert(idx < NUMCHUNKS + 1);
+	farptr p = FAR_ADD(grheadfar, 3 * (uint32_t) idx);
+	int32_t val = (int32_t) far_peekw(p) | (int32_t) far_peek(FAR_ADD(p, 2)) << 16;
+	return val == 0x00FFFFFF ? -1 : val;
+}
+
+static int32_t AUDIOSTART(int chunk)
+{
+	return (int32_t) far_peekl(FAR_ADD(audioheadfar, 4 * (uint32_t) chunk));
+}
+#else
 static int32_t GRFILEPOS(const size_t idx)
 {
 	assert(idx < lengthof(grstarts));
 	return grstarts[idx];
 }
+#endif
 
 /*
 =============================================================================
@@ -494,10 +511,15 @@ void CAL_SetupGrFile (void)
     long headersize = lseek(handle, 0, SEEK_END);
     lseek(handle, 0, SEEK_SET);
 
-#ifndef APOGEE_1_0
-	int expectedsize = lengthof(grstarts) - numEpisodesMissing;
+#ifdef MEGA65
+	const int numgrstarts = NUMCHUNKS + 1;
 #else
-	int expectedsize = lengthof(grstarts);
+	const int numgrstarts = lengthof(grstarts);
+#endif
+#ifndef APOGEE_1_0
+	int expectedsize = numgrstarts - numEpisodesMissing;
+#else
+	int expectedsize = numgrstarts;
 #endif
 
     if(!param_ignorenumchunks && headersize / 3 != (long) expectedsize)
@@ -507,6 +529,13 @@ void CAL_SetupGrFile (void)
             "(For mod developers: perhaps you forgot to update NUMCHUNKS?)",
             fname, headersize / 3, expectedsize);
 
+#ifdef MEGA65
+    // The offsets are read in place (GRFILEPOS); no near table.
+    close(handle);
+    grheadfar = m65_file_far(fname, NULL);
+
+    grsegs.init(far_alloc_chip(grsegs.bytes()));
+#else
     byte data[lengthof(grstarts) * 3];
     read(handle, data, sizeof(data));
     close(handle);
@@ -519,6 +548,7 @@ void CAL_SetupGrFile (void)
         *i = (val == 0x00FFFFFF ? -1 : val);
         d += 3;
     }
+#endif
 #endif
 
 //
@@ -683,10 +713,16 @@ void CAL_SetupAudioFile (void)
     strcpy(fname,aheadname);
     strcat(fname,audioext);
 
+#ifdef MEGA65
+    audioheadfar = m65_file_far(fname, NULL);   // offsets read in place
+    if (FAR_ISNULL(audioheadfar))
+        CA_CannotOpen(fname);
+#else
     void* ptr;
     if (!CA_LoadFile(fname, &ptr))
         CA_CannotOpen(fname);
     audiostarts = (int32_t*)ptr;
+#endif
 
 //
 // open the data file
@@ -789,12 +825,14 @@ void CA_Shutdown (void)
 // AUDIOT in attic RAM. (The AdLib instrument header is not unpacked into an
 // AdLibSound: the MEGA65 sound code reads the raw layout.)
 
+farptr CA_AudioChunk (int chunk)
+{
+    return FAR_ADD(audiofar, AUDIOSTART(chunk));
+}
+
 int32_t CA_CacheAudioChunk (int chunk)
 {
-    int32_t pos = audiostarts[chunk];
-
-    audiosegs[chunk] = FAR_ADD(audiofar, pos);
-    return audiostarts[chunk+1]-pos;
+    return AUDIOSTART(chunk+1) - AUDIOSTART(chunk);
 }
 
 void CA_CacheAdlibSoundChunk (int chunk)

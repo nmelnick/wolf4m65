@@ -20,7 +20,7 @@ WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
-            -DVERSIONALREADYCHOSEN -DCARMACIZED -DUPLOAD -DMEGA65 \
+            -DVERSIONALREADYCHOSEN -DCARMACIZED -DUPLOAD -DMEGA65 -DNDEBUG \
             -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch
 
 obj/%.o: $(WOLFDIR)/%.cpp m65_compat.h SDL.h
@@ -52,7 +52,11 @@ build/SIGNON.BIN: tools/extract_signon.py $(WOLFDIR)/signon.cpp
 	@mkdir -p build
 	python3 tools/extract_signon.py $(WOLFDIR)/signon.cpp $@
 
-PORTDATA = build/SIGNON.BIN
+build/TABLES.BIN: tools/gen_tables.py
+	@mkdir -p build
+	python3 tools/gen_tables.py $@
+
+PORTDATA = build/SIGNON.BIN build/TABLES.BIN
 
 $(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
 	@mkdir -p build
@@ -107,8 +111,16 @@ build/hosttest/shifttest.cpp: tools/make_shifttest.py $(WOLFDIR)/wl_play.cpp
 build/hosttest/%.sim: build/hosttest/%.cpp
 	mos-sim-clang++ -Os -I$(WOLFDIR) -o $@ $<
 
-test-host: build/hosttest/shifttest.sim
+build/hosttest/libmtest.c: tools/gen_libmtest.py
+	@mkdir -p build/hosttest
+	python3 tools/gen_libmtest.py $@
+
+build/hosttest/libmtest.sim: build/hosttest/libmtest.c m65_libm.c
+	mos-sim-clang -Os -o $@ $^
+
+test-host: build/hosttest/shifttest.sim build/hosttest/libmtest.sim
 	mos-sim build/hosttest/shifttest.sim
+	mos-sim build/hosttest/libmtest.sim
 
 # --- Far memory / Huffman test ------------------------------------------------
 
@@ -130,7 +142,7 @@ build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_mapref.py $@
 
-M65LIB = m65_assert.c m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
+M65LIB = m65_assert.c m65_libm.c m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
 
 catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
 	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)

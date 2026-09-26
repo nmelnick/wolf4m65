@@ -118,10 +118,10 @@ int main (void)
         uint16_t ta = 0, tb = 0;
         char c9;
         CA_CacheGrChunk(T_HELPART);
-        t = grsegs[T_HELPART];
+        t = (farptr) grsegs[T_HELPART];
         c9 = *(t + 9);
         for (k = 0; k < len; k++) { ta += (uint8_t) *t++; tb += ta; }
-        u = grsegs[T_HELPART];
+        u = (farptr) grsegs[T_HELPART];
         u = u + 10;
         --u;
         rep.fartext_ok = ta == ref[T_HELPART].sa && tb == ref[T_HELPART].sb

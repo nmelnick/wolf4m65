@@ -17,6 +17,7 @@
 // The map planes are in far memory too; mapptr behaves like word * (see
 // m65_farword.hpp), so MAPSPOT and code walking the planes are unchanged.
 #include "m65_farword.hpp"
+#include "m65_fararray.hpp"
 typedef FarWordPtr mapptr;
 #define UNCACHEGRCHUNK(chunk)
 #define UNCACHEAUDIOCHUNK(chunk)
@@ -42,8 +43,9 @@ extern  int   mapon;
 
 extern  mapptr mapsegs[MAPPLANES];
 #ifdef MEGA65
-extern  farptr audiosegs[NUMSNDCHUNKS];     // raw chunks, in AUDIOT in place
-extern  farptr grsegs[NUMCHUNKS];
+// A raw audio chunk, in place in AUDIOT (replaces audiosegs[]).
+farptr CA_AudioChunk (int chunk);
+extern  FarArray<farptr, NUMCHUNKS> grsegs; // (behaves like farptr[NUMCHUNKS])
 #else
 extern  byte *audiosegs[NUMSNDCHUNKS];
 extern  byte *grsegs[NUMCHUNKS];

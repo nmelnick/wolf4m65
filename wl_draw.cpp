@@ -48,9 +48,15 @@ int min_wallheight;
 // math tables
 //
 short *pixelangle;
+#ifdef MEGA65
+FarArray<int32_t, FINEANGLES/4> finetangent;       // set up by BuildTables
+FarArray<fixed, ANGLES+ANGLES/4> sintable;
+FarArray<fixed, ANGLES> costable;
+#else
 int32_t finetangent[FINEANGLES/4];
 fixed sintable[ANGLES+ANGLES/4];
 fixed *costable = sintable+(ANGLES/4);
+#endif
 
 //
 // refresh variables
@@ -1053,7 +1059,13 @@ void SimpleScaleShape (int xcenter, int shapenum, unsigned height)
 =====================
 */
 
+#ifdef MEGA65
+// Objects visible in one frame; DrawScaleds drops any beyond this (as the
+// original does at 250). Saves 1KB of near memory.
+#define MAXVISABLE 128
+#else
 #define MAXVISABLE 250
+#endif
 
 typedef struct
 {

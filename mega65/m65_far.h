@@ -17,9 +17,12 @@ typedef struct { uint32_t a; } farptr;
 
 #define FARNULL             ((farptr){0})
 #define FAR(addr)           ((farptr){(uint32_t)(addr)})
-#define FAR_ISNULL(p)       ((p).a == 0)
-#define FAR_ADD(p, n)       ((farptr){(p).a + (uint32_t)(n)})
 #define FAR_OF(ptr)         ((farptr){(uint32_t)(uintptr_t)(ptr)})   // near -> far
+
+// Functions rather than macros, so that C++ proxies that convert to a farptr
+// (e.g. grsegs[i], see m65_fararray.hpp) can be passed directly.
+static inline int FAR_ISNULL(farptr p) { return p.a == 0; }
+static inline farptr FAR_ADD(farptr p, uint32_t n) { farptr r; r.a = p.a + n; return r; }
 
 // Attic RAM layout (HyperRAM, $8000000-$87FFFFF).
 //   MB $80        not free (in use by the system; see ovl_rt.s)

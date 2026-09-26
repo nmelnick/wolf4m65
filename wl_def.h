@@ -1125,9 +1125,18 @@ int DebugKeys (void);
 // math tables
 //
 extern  short *pixelangle;
+#ifdef MEGA65
+// In far (chip) memory, precomputed on the host (TABLES.BIN, see
+// tools/gen_tables.py); they behave like the arrays (m65_fararray.hpp).
+// costable overlays sintable with a quarter phase shift, as below.
+extern  FarArray<int32_t, FINEANGLES/4> finetangent;
+extern  FarArray<fixed, ANGLES+ANGLES/4> sintable;
+extern  FarArray<fixed, ANGLES> costable;
+#else
 extern  int32_t finetangent[FINEANGLES/4];
 extern  fixed sintable[];
 extern  fixed *costable;
+#endif
 extern  int *wallheight;
 extern  word horizwall[],vertwall[];
 extern  int32_t    lasttimecount;

@@ -40,6 +40,7 @@ unsigned bordercolor;
 // curpal (the original also used a palette2 buffer: 1KB saved).
 SDL_Color palette1[256];
 SDL_Color curpal[256];
+unsigned vl_curpalchanges;
 
 #define RGB(r, g, b) {(r)*255/63, (g)*255/63, (b)*255/63, 0}
 
@@ -130,6 +131,7 @@ void VL_SetColor (int color, int red, int green, int blue)
 {
     SDL_Color col = { (Uint8) red, (Uint8) green, (Uint8) blue, 0 };
     curpal[color] = col;
+    vl_curpalchanges++;
     m65_set_color(color, red, green, blue);
 }
 
@@ -152,7 +154,10 @@ void VL_SetPalette (SDL_Color *palette, bool forceupdate)
 {
     (void) forceupdate;
     if (palette != curpal)
+    {
         memcpy(curpal, palette, sizeof(SDL_Color) * 256);
+        vl_curpalchanges++;
+    }
     PushCurPal();
 }
 
@@ -196,6 +201,7 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
         }
 
         VL_WaitVBL(1);
+        vl_curpalchanges++;
         PushCurPal();
     }
 
@@ -230,6 +236,7 @@ void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
         }
 
         VL_WaitVBL(1);
+        vl_curpalchanges++;
         PushCurPal();
     }
 

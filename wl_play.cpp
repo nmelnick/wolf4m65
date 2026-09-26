@@ -979,7 +979,15 @@ void ContinueMusic (int offs)
 // all of them (9KB) the current one is built on demand into shiftpal (1KB).
 // The arithmetic is the same as the original precomputed tables.
 //
+#ifdef MEGA65
+// Built straight into curpal (1KB less); vl_curpalchanges tells whether
+// something else has overwritten it since.
+extern SDL_Color curpal[256];
+#define shiftpal curpal
+static unsigned shiftpalchanges;
+#else
 static SDL_Color shiftpal[256];
+#endif
 static int shiftpalkind;        // 0 = none built, 1 = red, 2 = white
 static int shiftpalstep;
 
@@ -991,7 +999,11 @@ static SDL_Color *BuildShift (int kind, int i)
     SDL_Color *workptr, *baseptr;
     int j, delta;
 
-    if (kind == shiftpalkind && i == shiftpalstep)
+    if (kind == shiftpalkind && i == shiftpalstep
+#ifdef MEGA65
+        && shiftpalchanges == vl_curpalchanges
+#endif
+        )
         return shiftpal;
 
     workptr = shiftpal;
@@ -1023,6 +1035,9 @@ static SDL_Color *BuildShift (int kind, int i)
 
     shiftpalkind = kind;
     shiftpalstep = i;
+#ifdef MEGA65
+    shiftpalchanges = vl_curpalchanges;
+#endif
     return shiftpal;
 }
 
