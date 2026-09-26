@@ -276,12 +276,31 @@ boolean TransformTile (int tx, int ty, short *dispx, short *dispheight)
 ====================
 */
 
+#ifdef MEGA65
+// n / d straight from the math unit's divider, for drawing: its integer part
+// can be one off (m65_hwdiv.c puts that right for the C operators; a texture
+// step or texel does not need it), and it takes a few cycles.
+static inline uint16_t DivApprox (uint32_t n, uint16_t d)
+{
+    *(volatile uint32_t *) 0xD770 = n;
+    *(volatile uint32_t *) 0xD774 = d;
+    while(*(volatile uint8_t *) 0xD70F & 0x80)
+        ;
+    return *(volatile uint16_t *) 0xD76C;
+}
+#endif
+
 int CalcHeight()
 {
     fixed z = FixedMul(xintercept - viewx, viewcos)
         - FixedMul(yintercept - viewy, viewsin);
     if(z < MINDIST) z = MINDIST;
+#ifdef MEGA65
+    // (drawing only, so the divider's raw quotient: see DivApprox)
+    int height = (int) DivApprox(heightnumerator, (uint16_t) (z >> 8));
+#else
     int height = heightnumerator / (z >> 8);
+#endif
     if(height < min_wallheight) min_wallheight = height;
     return height;
 }
@@ -340,17 +359,6 @@ static inline uint32_t ViewAddr (int x, int y)
 // The column buffer (mega65/m65_draw.s), for the sprites.
 extern "C" byte m65_colbuf[];
 
-// n / d straight from the math unit's divider, for drawing: its integer part
-// can be one off (m65_hwdiv.c puts that right for the C operators; a texture
-// step or texel does not need it), and it takes a few cycles.
-static inline uint16_t DivApprox (uint32_t n, uint16_t d)
-{
-    *(volatile uint32_t *) 0xD770 = n;
-    *(volatile uint32_t *) 0xD774 = d;
-    while(*(volatile uint8_t *) 0xD70F & 0x80)
-        ;
-    return *(volatile uint16_t *) 0xD76C;
-}
 
 //
 // A wall column: one DMA copy that scales the texture column as it goes. The
