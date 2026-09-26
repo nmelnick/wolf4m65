@@ -220,3 +220,4 @@ mega65/*.elf
 mega65/*.o
 mega65/*.png
 mega65/*.mem
+mega65/obj/
