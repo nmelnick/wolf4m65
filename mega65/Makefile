@@ -177,6 +177,10 @@ $(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
 	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) $(PORTDATA) s:
 
+# Hardware timing test (see hwtest.c): on the D81 as HWTEST.
+hwtest.prg: hwtest.c m65_video.c m65_video.h
+	$(CC) $(CFLAGS) -fno-lto -I. -o $@ hwtest.c m65_video.c   # (LTO: clang crashes on the asm)
+
 dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
 	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c
 
@@ -325,11 +329,12 @@ run-wolf: wolf.prg $(SDIMG) $(MUSICDATA)
 # SD card: WOLF3D.D81 (a disk image holding the program, WOLF) and the files
 # the game loads itself (see README.md).
 SDCARD = build/sdcard
-sdcard: wolf.prg $(PORTDATA) $(MUSICDATA)
+sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA)
 	rm -rf $(SDCARD)
 	mkdir -p $(SDCARD)
 	cp $(GAMEFILES) $(GAMEDATA) $(SDCARD)/
-	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF3D.D81 -write wolf.prg wolf
+	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF3D.D81 -write wolf.prg wolf \
+	  -write hwtest.prg hwtest
 	@echo; echo "Copy everything in $(SDCARD)/ to the SD card's root directory."; ls -l $(SDCARD)
 
 # build/wolf3d-mega65.zip: the same without the game data (*.WL1), for

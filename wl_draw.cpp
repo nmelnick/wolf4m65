@@ -1884,14 +1884,33 @@ void    ThreeDRefresh (void)
             PrintX=4; PrintY=1;
             VWB_Bar(0,0,50,10,bordercol);
             US_PrintSigned(fps);
+#ifdef MEGA65
+            US_Print(" ms");            // (real time per frame: see below)
+#else
             US_Print(" fps");
+#endif
         }
 #endif
         SDL_BlitSurface(screenBuffer, NULL, screen, NULL);
         SDL_Flip(screen);
     }
 
-#ifndef REMDEBUG
+#ifdef MEGA65
+    // The time per frame, in real milliseconds, averaged over 8 frames: the
+    // counter below counts frames per 35 tics, but a frame is credited at
+    // most MAXTICS tics, so it cannot show fewer than 6-8 frames per second.
+    if (fpscounter)
+    {
+        static uint32_t fpsstart;
+        if (++fps_frames == 8)
+        {
+            uint32_t now = SDL_GetTicks();
+            fps = (int) ((now - fpsstart) / 8);
+            fpsstart = now;
+            fps_frames = 0;
+        }
+    }
+#elif !defined(REMDEBUG)
     if (fpscounter)
     {
         fps_frames++;
