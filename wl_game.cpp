@@ -676,7 +676,11 @@ void SetupGameLevel (void)
 //
 // copy the wall data to a data segment array
 //
+#ifdef MEGA65
+    tilemap.clear ();
+#else
     memset (tilemap,0,sizeof(tilemap));
+#endif
 #ifdef MEGA65
     actorat.clear ();
 #else

@@ -353,6 +353,52 @@ int32_t DoChecksum(byte *source,unsigned size,int32_t checksum)
     return checksum;
 }
 
+#ifdef MEGA65
+//
+// fwrite/fread of a far block, with the same checksum as DoChecksum over the
+// whole block (pairs of adjacent bytes, including across the chunks).
+//
+static int32_t FarFwrite(farptr src, unsigned size, FILE *file, int32_t checksum)
+{
+    byte buf[64];
+    int prev = -1;
+    while (size)
+    {
+        unsigned n = size < sizeof buf ? size : sizeof buf;
+        far_read(buf, src, n);
+        fwrite(buf, n, 1, file);
+        for (unsigned i = 0; i < n; i++)
+        {
+            if (prev >= 0) checksum += prev ^ buf[i];
+            prev = buf[i];
+        }
+        src = FAR_ADD(src, n);
+        size -= n;
+    }
+    return checksum;
+}
+
+static int32_t FarFread(farptr dst, unsigned size, FILE *file, int32_t checksum)
+{
+    byte buf[64];
+    int prev = -1;
+    while (size)
+    {
+        unsigned n = size < sizeof buf ? size : sizeof buf;
+        fread(buf, n, 1, file);
+        far_write(dst, buf, n);
+        for (unsigned i = 0; i < n; i++)
+        {
+            if (prev >= 0) checksum += prev ^ buf[i];
+            prev = buf[i];
+        }
+        dst = FAR_ADD(dst, n);
+        size -= n;
+    }
+    return checksum;
+}
+#endif
+
 
 /*
 ==================
@@ -388,7 +434,11 @@ boolean SaveTheGame(FILE *file,int x,int y)
 
     size += sizeof(gamestate) +
             sizeof(LRstruct)*LRpack +
+#ifdef MEGA65
+            tilemap.bytes() +
+#else
             sizeof(tilemap) +
+#endif
 #ifdef MEGA65
             actorat.bytes() +
 #else
@@ -421,8 +471,12 @@ boolean SaveTheGame(FILE *file,int x,int y)
     checksum = DoChecksum((byte *)&LevelRatios[0],sizeof(LRstruct)*LRpack,checksum);
 
     DiskFlopAnim(x,y);
+#ifdef MEGA65
+    checksum = FarFwrite(tilemap.far(),tilemap.bytes(),file,checksum);
+#else
     fwrite(tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
+#endif
     DiskFlopAnim(x,y);
 
     int i;
@@ -474,7 +528,9 @@ boolean SaveTheGame(FILE *file,int x,int y)
     for(i=0;i<MAXSTATS;i++)
     {
         memcpy(&nullstat,statobjlist+i,sizeof(nullstat));
+#ifndef MEGA65       // (on the MEGA65 visspot already is an offset into spotvis)
         nullstat.visspot=(byte *) ((uintptr_t) nullstat.visspot-(uintptr_t)spotvis);
+#endif
         fwrite(&nullstat,sizeof(nullstat),1,file);
         checksum = DoChecksum((byte *)&nullstat,sizeof(nullstat),checksum);
     }
@@ -540,8 +596,12 @@ boolean LoadTheGame(FILE *file,int x,int y)
     SetupGameLevel ();
 
     DiskFlopAnim(x,y);
+#ifdef MEGA65
+    checksum = FarFread(tilemap.far(),tilemap.bytes(),file,checksum);
+#else
     fread (tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
+#endif
 
     DiskFlopAnim(x,y);
 
@@ -590,7 +650,9 @@ boolean LoadTheGame(FILE *file,int x,int y)
     {
         fread(&nullstat,sizeof(nullstat),1,file);
         checksum = DoChecksum((byte *)&nullstat,sizeof(nullstat),checksum);
+#ifndef MEGA65
         nullstat.visspot=(byte *) ((uintptr_t)nullstat.visspot+(uintptr_t)spotvis);
+#endif
         memcpy(statobjlist+i,&nullstat,sizeof(nullstat));
     }
 

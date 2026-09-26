@@ -190,6 +190,14 @@ void Quit(const char *errorStr, ...);
 
 #define mapshift        6
 #define MAPSIZE         (1<<mapshift)
+
+#ifdef MEGA65
+// Far map grids (tilemap, spotvis, actorat); see m65_fargrid.hpp.
+#include "m65_fargrid.hpp"
+typedef FarByteGrid<1, MAPSIZE>::Ptr spotvisptr;    // &spotvis[x][y]
+#else
+typedef byte *spotvisptr;
+#endif
 #define maparea         MAPSIZE*MAPSIZE
 
 #define mapheight       MAPSIZE
@@ -748,7 +756,7 @@ typedef struct statstruct
 {
     byte      tilex,tiley;
     short     shapenum;           // if shapenum == -1 the obj has been removed
-    byte      *visspot;
+    spotvisptr visspot;
     uint32_t  flags;
     byte      itemnumber;
 } statobj_t;
@@ -1009,8 +1017,19 @@ void UpdateSoundLoc(void);
 
 #define JOYSCALE                2
 
+#ifdef MEGA65
+// In far (chip) memory; they behave like the arrays (m65_fargrid.hpp).
+// TILEMAP_FLAT/SPOTVIS_FLAT stand for (byte *) tilemap/spotvis.
+extern  FarByteGrid<0, MAPSIZE> tilemap;        // wall values only
+extern  FarByteGrid<1, MAPSIZE> spotvis;
+#define TILEMAP_FLAT (tilemap.flat())
+#define SPOTVIS_FLAT (spotvis.flat())
+#else
 extern  byte            tilemap[MAPSIZE][MAPSIZE];      // wall values only
 extern  byte            spotvis[MAPSIZE][MAPSIZE];
+#define TILEMAP_FLAT ((byte *)tilemap)
+#define SPOTVIS_FLAT ((byte *)spotvis)
+#endif
 #ifdef MEGA65
 // In far memory (chip RAM); behaves like the array (see m65_fargrid.hpp).
 #include "m65_fargrid.hpp"

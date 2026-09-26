@@ -54,4 +54,78 @@ private:
     uint32_t base;
 };
 
+// A MAPSIZE x MAPSIZE array of bytes in far memory that behaves like
+// `byte grid[N][N]` (tilemap, spotvis), including &grid[x][y], pointer
+// arithmetic on that (Ptr, a 16-bit offset into the grid, so it is as small
+// as the original byte *), and compound assignment. ID distinguishes grids:
+// each has its own static base address.
+template <int ID, int N>
+class FarByteGrid
+{
+public:
+    static uint32_t base;
+
+    class Ptr;
+
+    class Ref
+    {
+    public:
+        explicit Ref (uint16_t off) : o(off) {}
+
+        operator uint8_t () const { return far_peek(FAR(base + o)); }
+        Ref &operator= (uint8_t v) { far_poke(FAR(base + o), v); return *this; }
+        Ref &operator= (const Ref &r) { return *this = (uint8_t) r; }   // value copy
+        Ref &operator|= (uint8_t v) { return *this = (uint8_t) ((uint8_t) *this | v); }
+        Ref &operator&= (uint8_t v) { return *this = (uint8_t) ((uint8_t) *this & v); }
+        Ref &operator^= (uint8_t v) { return *this = (uint8_t) ((uint8_t) *this ^ v); }
+        Ref &operator+= (uint8_t v) { return *this = (uint8_t) ((uint8_t) *this + v); }
+        Ref &operator-= (uint8_t v) { return *this = (uint8_t) ((uint8_t) *this - v); }
+        Ref &operator++ () { return *this += 1; }
+        Ref &operator-- () { return *this -= 1; }
+        uint8_t operator++ (int) { uint8_t v = *this; *this += 1; return v; }
+        uint8_t operator-- (int) { uint8_t v = *this; *this -= 1; return v; }
+        Ptr operator& () const { return Ptr(o); }
+
+    private:
+        uint16_t o;
+    };
+
+    class Ptr
+    {
+    public:
+        Ptr () : o(0) {}
+        explicit Ptr (uint16_t off) : o(off) {}
+
+        Ref operator* () const { return Ref(o); }
+        Ref operator[] (int i) const { return Ref((uint16_t) (o + i)); }
+        Ptr operator+ (int n) const { return Ptr((uint16_t) (o + n)); }
+        Ptr operator- (int n) const { return Ptr((uint16_t) (o - n)); }
+        bool operator== (const Ptr &p) const { return o == p.o; }
+        bool operator!= (const Ptr &p) const { return o != p.o; }
+        uint16_t offset () const { return o; }
+
+    private:
+        uint16_t o;
+    };
+
+    class Row
+    {
+    public:
+        explicit Row (uint16_t off) : o(off) {}
+        Ref operator[] (int y) const { return Ref((uint16_t) (o + y)); }
+    private:
+        uint16_t o;
+    };
+
+    Row operator[] (int x) const { return Row((uint16_t) (x * N)); }
+    Ptr flat () const { return Ptr(0); }               // (byte *) grid
+    farptr far () const { return FAR(base); }
+
+    static void init (farptr storage) { base = storage.a; clear(); }
+    static void clear (void) { m65_dma_fill(base, 0, (uint16_t) (N * N)); }
+    static uint16_t bytes (void) { return (uint16_t) (N * N); }
+};
+
+template <int ID, int N> uint32_t FarByteGrid<ID, N>::base;
+
 #endif

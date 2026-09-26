@@ -681,12 +681,17 @@ void CAL_SetupMapFile (void)
     }
 
 #ifdef MEGA65
-    // actorat lives next to the planes, in chip RAM (see wl_def.h).
+    // actorat, tilemap and spotvis live next to the planes, in chip RAM
+    // (see wl_def.h).
     {
         farptr grid = far_alloc_chip(actorat.bytes());
-        if (FAR_ISNULL(grid))
+        farptr tiles = far_alloc_chip(tilemap.bytes());
+        farptr vis = far_alloc_chip(spotvis.bytes());
+        if (FAR_ISNULL(grid) || FAR_ISNULL(tiles) || FAR_ISNULL(vis))
             Quit("Out of chip far memory");
         actorat.init(grid);
+        tilemap.init(tiles);
+        spotvis.init(vis);
     }
 #endif
 }

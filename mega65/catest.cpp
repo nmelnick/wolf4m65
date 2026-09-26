@@ -15,6 +15,8 @@ pictabletype *pictable;
 SDMode        SoundMode;
 extern int    numEpisodesMissing;
 FarPtrGrid<objtype, MAPSIZE> actorat;     // (defined in wl_play.cpp in the game)
+FarByteGrid<0, MAPSIZE> tilemap;
+FarByteGrid<1, MAPSIZE> spotvis;
 
 // (Arguments are not printed.)
 void Quit (const char *error, ...)

@@ -149,6 +149,46 @@ int main (void)
         }
     }
 
+    // --- FarByteGrid (tilemap, spotvis) ----------------------------------------------
+    {
+        typedef FarByteGrid<7, N> Grid;
+        static Grid fg;
+        static uint8_t ng[N][N];
+        Grid::Ptr fp2, fq;
+        uint8_t *np2, *nq;
+
+        fg.init(far_alloc_chip(Grid::bytes()));
+        memset(ng, 0, sizeof ng);
+        for (x = 0; x < N; x++)
+            for (y = 0; y < N; y++)
+                check(fg[x][y] == 0, 50);                           // init clears
+        for (x = 0; x < N; x++)
+            for (y = 0; y < N; y++) {
+                ng[x][y] = (uint8_t) (x * 31 + y * 7);
+                fg[x][y] = (uint8_t) (x * 31 + y * 7);
+            }
+        ng[2][3] |= 0x40; fg[2][3] |= 0x40;                        // SpawnDoor
+        ng[4][4]++;       fg[4][4]++;                              // elevator switch
+        check(fg[2][3] == ng[2][3] && fg[4][4] == ng[4][4], 51);
+        {
+            uint8_t a = fg[4][4]++, b = ng[4][4]++;                // postfix value
+            check(a == b, 52);
+        }
+        fp2 = &fg[3][3]; np2 = &ng[3][3];                          // &grid[x][y]
+        check(*fp2 == *np2, 53);
+        check(*(fp2 - 1) == *(np2 - 1) && *(fp2 + N) == *(np2 + N)
+              && *(fp2 - (N + 1)) == *(np2 - (N + 1)), 54);        // neighbours
+        fq = fg.flat() + (2 * N + 5); nq = (uint8_t *) ng + (2 * N + 5);
+        check(fg.flat()[2 * N + 5] == ((uint8_t *) ng)[2 * N + 5] && *fq == *nq, 55);
+        *(fg.flat() + 9) = 1; *((uint8_t *) ng + 9) = 1;          // spotvis mark
+        check(!*fq == !*nq && fp2 != fq && (fp2 - 0) == fp2, 56);
+        for (x = 0; x < N; x++)
+            for (y = 0; y < N; y++)
+                check(fg[x][y] == ng[x][y], 57);                   // whole grid agrees
+        fg.clear();
+        check(fg[5][6] == 0, 58);
+    }
+
     struct { uint8_t magic; uint8_t firstfail; uint16_t fails, checks; } rep =
         { 0xEE, firstfail, fails, checks };
     m65_dma_copy(REPORT, (uint32_t)(uintptr_t)&rep, sizeof rep);

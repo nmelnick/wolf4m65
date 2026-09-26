@@ -1085,7 +1085,12 @@ visobj_t *visptr,*visstep,*farthest;
 void DrawScaleds (void)
 {
     int      i,least,numvisable,height;
-    byte     *tilespot,*visspot;
+    spotvisptr visspot;
+#ifdef MEGA65
+    FarByteGrid<0, MAPSIZE>::Ptr tilespot;
+#else
+    byte     *tilespot;
+#endif
     unsigned spotloc;
 
     statobj_t *statptr;
@@ -1138,8 +1143,8 @@ void DrawScaleds (void)
             continue;                                               // no shape
 
         spotloc = (obj->tilex<<mapshift)+obj->tiley;   // optimize: keep in struct?
-        visspot = &spotvis[0][0]+spotloc;
-        tilespot = &tilemap[0][0]+spotloc;
+        visspot = SPOTVIS_FLAT+spotloc;
+        tilespot = TILEMAP_FLAT+spotloc;
 
         //
         // could be in any of the nine surrounding tiles
@@ -1405,7 +1410,7 @@ vertentry:
                 break;
             }
             if(xspot>=maparea) break;
-            tilehit=((byte *)tilemap)[xspot];
+            tilehit=TILEMAP_FLAT[xspot];
             if(tilehit)
             {
                 if(tilehit&0x80)
@@ -1534,7 +1539,7 @@ vertentry:
                 break;
             }
 passvert:
-            *((byte *)spotvis+xspot)=1;
+            *(SPOTVIS_FLAT+xspot)=1;
             xtile+=xtilestep;
             yintercept+=ystep;
             xspot=(word)((xtile<<mapshift)+((uint32_t)yintercept>>16));
@@ -1560,7 +1565,7 @@ horizentry:
                 break;
             }
             if(yspot>=maparea) break;
-            tilehit=((byte *)tilemap)[yspot];
+            tilehit=TILEMAP_FLAT[yspot];
             if(tilehit)
             {
                 if(tilehit&0x80)
@@ -1689,7 +1694,7 @@ horizentry:
                 break;
             }
 passhoriz:
-            *((byte *)spotvis+yspot)=1;
+            *(SPOTVIS_FLAT+yspot)=1;
             ytile+=ytilestep;
             xintercept+=xstep;
             yspot=(word)((((uint32_t)xintercept>>16)<<mapshift)+ytile);
@@ -1750,7 +1755,11 @@ void    ThreeDRefresh (void)
 //
 // clear out the traced array
 //
+#ifdef MEGA65
+    spotvis.clear();
+#else
     memset(spotvis,0,maparea);
+#endif
     spotvis[player->tilex][player->tiley] = 1;       // Detect all sprites over player fix
 
 #ifndef MEGA65       // (the MEGA65 renderer addresses screenBuffer directly)

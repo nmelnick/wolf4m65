@@ -38,8 +38,13 @@ objtype *newobj, *obj, *player, *lastobj, *objfreelist, *killerobj;
 boolean noclip, ammocheat;
 int godmode, singlestep, extravbls = 0;
 
+#ifdef MEGA65
+FarByteGrid<0, MAPSIZE> tilemap;        // storage set up in CAL_SetupMapFile
+FarByteGrid<1, MAPSIZE> spotvis;
+#else
 byte tilemap[MAPSIZE][MAPSIZE]; // wall values only
 byte spotvis[MAPSIZE][MAPSIZE];
+#endif
 #ifdef MEGA65
 FarPtrGrid<objtype, MAPSIZE> actorat;   // storage set up in CA_Startup
 #else
