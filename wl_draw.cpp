@@ -304,9 +304,22 @@ int postwidth;
 //
 // Far address of pixel (x, y) of the 3D view in screenBuffer.
 //
+// Offset of each 8-pixel strip in the tiled draw buffer: (x >> 3) * 1600,
+// without a multiply (the whole buffer is 64000 bytes: 16 bits suffice).
+#define STRIP(n) (uint16_t) ((unsigned) (n) * M65_CELLCOL_SIZE)
+#define STRIPS8(n) STRIP(n), STRIP(n + 1), STRIP(n + 2), STRIP(n + 3), \
+                   STRIP(n + 4), STRIP(n + 5), STRIP(n + 6), STRIP(n + 7)
+static const uint16_t stripofs[M65_SCREEN_W / 8] =
+    { STRIPS8(0), STRIPS8(8), STRIPS8(16), STRIPS8(24), STRIPS8(32) };
+
+// Far address of view pixel (x, y) in screenBuffer (tiled: m65_video.h);
+// surf_addr's result, inline and without its 32-bit multiply.
 static inline uint32_t ViewAddr (int x, int y)
 {
-    return surf_addr(screenBuffer, viewscreenx + x, viewscreeny + y);
+    x += viewscreenx;
+    y += viewscreeny;
+    return screenBuffer->farpixels
+         + (uint16_t) (stripofs[x >> 3] + ((uint16_t) y << 3) + (x & 7));
 }
 
 //
@@ -316,12 +329,18 @@ static inline uint32_t ViewAddr (int x, int y)
 // rows drawn are written to the screen with one DMA job (the framebuffer's
 // columns are every 8th byte).
 //
+// The column loop, in assembly (mega65/m65_draw.s), with its inputs.
+extern "C" {
+    extern uint32_t m65_sc_tex;
+    extern int16_t m65_sc_cnt, m65_sc_yd;
+    extern uint8_t m65_sc_ytop, m65_sc_yend, m65_sc_yw;
+    extern byte m65_colbuf[];
+    uint8_t m65_scalecol (void);
+}
+
 void ScalePost()
 {
-    static byte tex[TEXTURESIZE];
-    static byte colbuf[M65_SCREEN_H];
     int ywcount, ytop, yw, yd, y, yend;
-    byte col;
 
     ywcount = yd = wallheight[postx] >> 3;
     if(yd <= 0) yd = 100;
@@ -342,32 +361,19 @@ void ScalePost()
         }
         yend--;
     }
-    if(yw < 0) return;
+    if(yw < 0 || yend < ytop) return;
 
-    far_read(tex, postsource, TEXTURESIZE);
+    // col = texture[yw]; for rows yend down to ytop: the texture scaled
+    // (the loop of the original ScalePost below, in m65_draw.s)
+    m65_sc_tex = postsource.a;
+    m65_sc_cnt = ywcount;
+    m65_sc_yd = yd;
+    m65_sc_ytop = ytop;
+    m65_sc_yend = yend;
+    m65_sc_yw = yw;
+    y = m65_scalecol();                 // rows y..yend were drawn
 
-    col = tex[yw];
-    y = yend;
-    while(ytop <= y)
-    {
-        colbuf[y] = col;
-        ywcount -= TEXTURESIZE/2;
-        if(ywcount <= 0)
-        {
-            do
-            {
-                ywcount += yd;
-                yw--;
-            }
-            while(ywcount <= 0);
-            if(yw < 0) break;           // (row y was drawn)
-            col = tex[yw];
-        }
-        y--;
-    }
-    if(y < ytop) y = ytop;              // rows y..yend were drawn
-
-    m65_dma_copy_skip(ViewAddr(postx, y), (uint32_t)(uintptr_t)&colbuf[y],
+    m65_dma_copy_skip(ViewAddr(postx, y), (uint32_t)(uintptr_t)&m65_colbuf[y],
                       yend - y + 1, M65_COLUMN_STEP);
 }
 
