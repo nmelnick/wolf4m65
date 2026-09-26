@@ -19,37 +19,45 @@ void far_copy(farptr dst, farptr src, uint16_t count)
     m65_dma_copy(dst.a, src.a, count);
 }
 
-// Single bytes use the 45GS02's flat 32-bit indirect addressing, through a
-// pointer in zero page: a few cycles instead of a DMA job.
-static volatile uint32_t flatptr __attribute__((section(".zp.bss")));
+// Bytes, words and longs use the 45GS02's flat 32-bit indirect addressing,
+// through a pointer in zero page: the pointer is set once, and Z picks the
+// byte (a few cycles each, instead of a DMA job). Calling convention: the
+// address (a farptr) in A, X, __rc2, __rc3; a value to store in __rc4
+// (__rc5); a value read back in A (X, __rc2, __rc3). Z is left 0.
+#define FAR_SETPTR \
+    "  sta m65_flatptr\n stx m65_flatptr+1\n" \
+    "  lda __rc2\n sta m65_flatptr+2\n lda __rc3\n sta m65_flatptr+3\n"
+#define FAR_FUNC(name) \
+    ".section .text." #name ",\"ax\",@progbits\n" \
+    ".globl " #name "\n.type " #name ",@function\n" #name ":\n"
 
-uint8_t far_peek(farptr p)
-{
-    uint8_t v;
-    flatptr = p.a;
-    __asm__ volatile("ldz #0\n lda [%1],z" : "=a"(v) : "i"(&flatptr) : "memory");
-    return v;
-}
+__asm__(
+    ".zeropage m65_flatptr\n"
+    ".section .zp.bss,\"aw\",@nobits\n"
+    "m65_flatptr: .zero 4\n"
 
-void far_poke(farptr p, uint8_t v)
-{
-    flatptr = p.a;
-    __asm__ volatile("ldz #0\n sta [%0],z" :: "i"(&flatptr), "a"(v) : "memory");
-}
+    FAR_FUNC(far_peek)
+    FAR_SETPTR
+    "  ldz #0\n lda [m65_flatptr],z\n rts\n"
 
-void far_pokew(farptr p, uint16_t v)
-{
-    far_poke(p, (uint8_t)v);
-    far_poke(FAR_ADD(p, 1), (uint8_t)(v >> 8));
-}
+    FAR_FUNC(far_poke)
+    FAR_SETPTR
+    "  lda __rc4\n ldz #0\n sta [m65_flatptr],z\n rts\n"
 
-uint16_t far_peekw(farptr p)
-{
-    return far_peek(p) | (uint16_t)far_peek(FAR_ADD(p, 1)) << 8;
-}
+    FAR_FUNC(far_peekw)
+    FAR_SETPTR
+    "  ldz #1\n lda [m65_flatptr],z\n tax\n"
+    "  ldz #0\n lda [m65_flatptr],z\n rts\n"
 
-uint32_t far_peekl(farptr p)
-{
-    return far_peekw(p) | (uint32_t)far_peekw(FAR_ADD(p, 2)) << 16;
-}
+    FAR_FUNC(far_pokew)
+    FAR_SETPTR
+    "  ldz #0\n lda __rc4\n sta [m65_flatptr],z\n"
+    "  inz\n lda __rc5\n sta [m65_flatptr],z\n ldz #0\n rts\n"
+
+    FAR_FUNC(far_peekl)
+    FAR_SETPTR
+    "  ldz #3\n lda [m65_flatptr],z\n sta __rc3\n"
+    "  dez\n lda [m65_flatptr],z\n sta __rc2\n"
+    "  dez\n lda [m65_flatptr],z\n tax\n"
+    "  dez\n lda [m65_flatptr],z\n rts\n");
 

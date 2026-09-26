@@ -1531,11 +1531,23 @@ static M65_NOINLINE bool HitHorizPushwall (int32_t xstep, int32_t ystep)
     return false;
 }
 
+#ifdef MEGA65
+extern "C" {
+    uint8_t m65_trace (uint8_t entry);          // (m65_trace.c)
+    extern int32_t m65_rxstep, m65_rystep;
+    extern uint32_t m65_tm_base, m65_sv_base;
+}
+#endif
+
 void AsmRefresh()
 {
     int32_t xstep,ystep;
     longword xpartial,ypartial;
     boolean playerInPushwallBackTile = tilemap[focaltx][focalty] == 64;
+#ifdef MEGA65
+    m65_tm_base = decltype(tilemap)::base;
+    m65_sv_base = decltype(spotvis)::base;
+#endif
 
     for(pixx=0;pixx<viewwidth;pixx++)
     {
@@ -1625,6 +1637,105 @@ void AsmRefresh()
             }
         }
 
+#ifdef MEGA65
+        //
+        // The two stepping loops below, in assembly (m65_trace.c): it steps
+        // the ray and hands back what needs the code here (the same code as
+        // below: doors, pushwalls, walls, the map's edge).
+        //
+        m65_rxstep = xstep;
+        m65_rystep = ystep;
+        uint8_t entry = 0;
+        for(;;)
+        {
+            uint8_t what = m65_trace(entry);
+            if(what == 1)                           // a tile, vertical crossing
+            {
+                if(tilehit&0x80)
+                {
+                    int32_t yintbuf=yintercept+(ystep>>1);
+                    if((yintbuf>>16)!=(yintercept>>16)
+                            || (word)yintbuf<doorposition[tilehit&0x7f])
+                    {
+                        entry = 1;                  // passvert
+                        continue;
+                    }
+                    yintercept=yintbuf;
+                    xintercept=((int32_t)xtile<<TILESHIFT)|0x8000;
+                    ytile = (short) (yintercept >> TILESHIFT);
+                    HitVertDoor();
+                }
+                else if(tilehit==64)
+                {
+                    if(HitVertPushwall(xstep,ystep))
+                    {
+                        entry = 1;
+                        continue;
+                    }
+                }
+                else
+                {
+                    xintercept=((int32_t)xtile<<TILESHIFT);
+                    ytile = (short) (yintercept >> TILESHIFT);
+                    HitVertWall();
+                }
+            }
+            else if(what == 2)                      // a tile, horizontal crossing
+            {
+                if(tilehit&0x80)
+                {
+                    int32_t xintbuf=xintercept+(xstep>>1);
+                    if((xintbuf>>16)!=(xintercept>>16)
+                            || (word)xintbuf<doorposition[tilehit&0x7f])
+                    {
+                        entry = 2;                  // passhoriz
+                        continue;
+                    }
+                    xintercept=xintbuf;
+                    yintercept=((int32_t)ytile<<TILESHIFT)+0x8000;
+                    xtile = (short) (xintercept >> TILESHIFT);
+                    HitHorizDoor();
+                }
+                else if(tilehit==64)
+                {
+                    if(HitHorizPushwall(xstep,ystep))
+                    {
+                        entry = 2;
+                        continue;
+                    }
+                }
+                else
+                {
+                    yintercept=((int32_t)ytile<<TILESHIFT);
+                    xtile = (short) (xintercept >> TILESHIFT);
+                    HitHorizWall();
+                }
+            }
+            else if(what == 3)                      // the edge, vertical crossing
+            {
+                if(xtile<0) xintercept=0, xtile=0;
+                else if(xtile>=mapwidth) xintercept=((int32_t)mapwidth<<TILESHIFT), xtile=mapwidth-1;
+                else xtile=(short) (xintercept >> TILESHIFT);
+                if(yintercept<0) yintercept=0, ytile=0;
+                else if(yintercept>=((int32_t)mapheight<<TILESHIFT)) yintercept=((int32_t)mapheight<<TILESHIFT), ytile=mapheight-1;
+                yspot=0xffff;
+                tilehit=0;
+                HitHorizBorder();
+            }
+            else if(what == 4)                      // the edge, horizontal crossing
+            {
+                if(ytile<0) yintercept=0, ytile=0;
+                else if(ytile>=mapheight) yintercept=((int32_t)mapheight<<TILESHIFT), ytile=mapheight-1;
+                else ytile=(short) (yintercept >> TILESHIFT);
+                if(xintercept<0) xintercept=0, xtile=0;
+                else if(xintercept>=((int32_t)mapwidth<<TILESHIFT)) xintercept=((int32_t)mapwidth<<TILESHIFT), xtile=mapwidth-1;
+                xspot=0xffff;
+                tilehit=0;
+                HitVertBorder();
+            }
+            break;                                  // (5: beyond the map)
+        }
+#else
         do
         {
             if(ytilestep==-1 && (yintercept>>16)<=ytile) goto horizentry;
@@ -1739,6 +1850,7 @@ passhoriz:
             yspot=(word)((((uint32_t)xintercept>>16)<<mapshift)+ytile);
         }
         while(1);
+#endif
     }
 }
 

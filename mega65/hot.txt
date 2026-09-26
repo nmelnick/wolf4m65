@@ -1,6 +1,7 @@
 # Overlay functions by time spent (make hotlist): ovlgen puts them
 # first into the overlays that run from chip RAM.
 _Z10AsmRefreshv
+m65_trace
 wl_draw___ZL13ScaleShapeFariijjb
 _Z9ScalePostv
 __udivsi3

@@ -42,7 +42,7 @@ wolf-objs: $(WOLFOBJS)
 
 GB        = build/game
 GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
-GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_surf m65_hwdiv m65_stdio m65_libm \
+GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_trace m65_surf m65_hwdiv m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
