@@ -42,6 +42,9 @@ struct report {
     uint16_t maps, mapbad, mapfirstbad;
     uint8_t  pictable_ok;           // pictable == start of chunk STRUCTPIC
     uint32_t heap;
+    uint16_t pm_pages;              // VSWAP: pages seen through PM_GetPage
+    uint32_t pm_bytes;              //        total PM_GetPageSize
+    uint16_t pm_sa, pm_sb;          //        checksum over all pages in order
 };
 
 static struct report rep;
@@ -115,6 +118,24 @@ int main (void)
             }
         }
         rep.maps++;
+    }
+
+    // VSWAP pages, through id_pm.
+    PM_Startup();
+    {
+        uint16_t pa = 0, pb = 0;
+        int p;
+        for (p = 0; p < ChunksInFile; p++) {
+            uint32_t size = PM_GetPageSize(p), k;
+            farptr page = PM_GetPage(p);
+            for (k = 0; k < size; k++) {
+                pa += far_peek(FAR_ADD(page, k));
+                pb += pa;
+            }
+            rep.pm_bytes += size;
+        }
+        rep.pm_pages = ChunksInFile;
+        rep.pm_sa = pa; rep.pm_sb = pb;
     }
 
     rep.heap = far_heap_used();

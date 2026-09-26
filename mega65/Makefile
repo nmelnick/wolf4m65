@@ -132,14 +132,14 @@ build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 
 M65LIB = m65_assert.c m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
 
-catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(M65LIB)
-	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(M65LIB)
+catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
+	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
 
 test-ca: catest.prg $(SDIMG)
 	python3 tools/xrun.py 600 catest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg catest.prg -dumpmem catest.mem
 	@tr -d '\r' < catest.ser | grep -a -A1 '^QUIT:' || true
-	python3 tools/check_catest.py catest.mem build/huffref.h build/mapref.h
+	python3 tools/check_catest.py catest.mem build/huffref.h build/mapref.h $(WOLFDIR)/VSWAP.WL1
 
 # --- Title test: id_ca + id_vh + the MEGA65 video layer ----------------------------
 

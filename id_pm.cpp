@@ -1,10 +1,92 @@
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_posix.h"
+#endif
 
 int ChunksInFile;
 int PMSpriteStart;
 int PMSoundStart;
 
 bool PMSoundInfoPagePadded = false;
+
+#ifdef MEGA65
+
+//
+// The VSWAP header: word ChunksInFile, word PMSpriteStart, word PMSoundStart,
+// then ChunksInFile page offsets (uint32) and ChunksInFile page lengths
+// (word). The file stays in attic RAM as loaded; pages are addressed in place
+// (the original repacks them to 2-byte-align sprites, which the 6502 does not
+// need).
+//
+static farptr   vswap;
+static uint32_t vswapsize;
+
+static uint32_t PageOffset (int page)
+{
+    return far_peekl(FAR_ADD(vswap, 6 + 4 * (uint32_t) page));
+}
+
+void PM_Startup()
+{
+    char fname[13] = "vswap.";
+    strcat(fname,extension);
+
+    vswap = m65_file_far(fname, &vswapsize);
+    if(FAR_ISNULL(vswap))
+        CA_CannotOpen(fname);
+
+    ChunksInFile = far_peekw(vswap);
+    PMSpriteStart = far_peekw(FAR_ADD(vswap, 2));
+    PMSoundStart = far_peekw(FAR_ADD(vswap, 4));
+
+    for(int i = 0; i < ChunksInFile; i++)
+    {
+        uint32_t offs = PageOffset(i);
+        if(offs && (offs < PageOffset(0) || offs >= vswapsize))
+            Quit("Illegal page offset for page %i: %lu (filesize: %lu)",
+                    i, (unsigned long) offs, (unsigned long) vswapsize);
+    }
+}
+
+void PM_Shutdown()
+{
+}
+
+static void CheckPage (int page)
+{
+    if(page < 0 || page >= ChunksInFile)
+        Quit("PM_GetPage: Tried to access illegal page: %i", page);
+}
+
+farptr PM_GetPage (int page)
+{
+    CheckPage(page);
+    uint32_t offs = PageOffset(page);
+    if(!offs)                               // sparse page: no data
+        return FAR_ADD(vswap, vswapsize);
+    return FAR_ADD(vswap, offs);
+}
+
+uint32_t PM_GetPageSize (int page)
+{
+    CheckPage(page);
+    uint32_t offs = PageOffset(page);
+    if(!offs)
+        return 0;                           // sparse page
+    // As in the original: the next page's offset, or this page's length
+    // entry when the next page is sparse (or this is the last page).
+    uint32_t next = page + 1 < ChunksInFile ? PageOffset(page + 1) : vswapsize;
+    if(!next)
+        return far_peekw(FAR_ADD(vswap, 6 + 4 * (uint32_t) ChunksInFile + 2 * (uint32_t) page));
+    return next - offs;
+}
+
+farptr PM_GetEnd ()
+{
+    return FAR_ADD(vswap, vswapsize);
+}
+
+#else
 
 // holds the whole VSWAP
 uint32_t *PMPageData;
@@ -123,3 +205,5 @@ void PM_Shutdown()
     free(PMPages);
     free(PMPageData);
 }
+
+#endif // MEGA65
