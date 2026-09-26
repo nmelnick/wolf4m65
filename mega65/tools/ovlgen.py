@@ -148,11 +148,12 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
         order += [f for m in mods if m.stem in hot_files for fs in
                   (byname.get(f.final_name, []) for f in m.funcs) for f in fs]
         bins, fills = [[] for _ in range(chip_slots)], [0] * chip_slots
+        room = window - 64          # (the sizes are estimates: a little slack)
         for f in order:
             if f.overlay:
                 continue
             for i in range(chip_slots):
-                if fills[i] + f.size <= window:
+                if fills[i] + f.size <= room:
                     bins[i].append(f)
                     fills[i] += f.size
                     f.overlay = i + 1

@@ -17,6 +17,10 @@ struct dma_job {
     uint8_t dst_mb;
     uint8_t opt_dst_skip;     // 0x85: destination step, whole bytes
     uint8_t dst_skip;
+    uint8_t opt_src_frac;     // 0x82: source step, fraction (8.8 fixed point)
+    uint8_t src_frac;
+    uint8_t opt_src_int;      // 0x83: source step, whole bytes
+    uint8_t src_int;
     uint8_t opt_end;          // 0x00
     struct DMAList_F018B list;
 };
@@ -27,7 +31,7 @@ static struct dma_job job;
 // rely on this: e.g. m65_takeover passes linker-symbol sizes, which the
 // compiler assumes to be non-zero, so a guard there is optimised away.
 static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count,
-                    uint8_t dstskip)
+                    uint8_t dstskip, uint16_t srcstep)
 {
     if (!count)
         return;
@@ -38,6 +42,10 @@ static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count,
     job.dst_mb     = (uint8_t)(dst >> 20);
     job.opt_dst_skip = DST_SKIP_RATE_OPT;
     job.dst_skip   = dstskip;
+    job.opt_src_frac = 0x82;
+    job.src_frac   = (uint8_t)srcstep;
+    job.opt_src_int = 0x83;
+    job.src_int    = (uint8_t)(srcstep >> 8);
     job.opt_end    = 0;
 
     job.list.command     = cmd;
@@ -64,21 +72,29 @@ static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count,
 
 void m65_dma_fill(uint32_t dst, uint8_t value, uint16_t count)
 {
-    dma_run(DMA_FILL_CMD, dst, value, count, 1);
+    dma_run(DMA_FILL_CMD, dst, value, count, 1, 0x100);
 }
 
 void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count)
 {
-    dma_run(DMA_COPY_CMD, dst, src, count, 1);
+    dma_run(DMA_COPY_CMD, dst, src, count, 1, 0x100);
 }
 
 void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip)
 {
-    dma_run(DMA_COPY_CMD, dst, src, count, dstskip);
+    dma_run(DMA_COPY_CMD, dst, src, count, dstskip, 0x100);
 }
 
 void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip)
 {
-    dma_run(DMA_FILL_CMD, dst, value, count, dstskip);
+    dma_run(DMA_FILL_CMD, dst, value, count, dstskip, 0x100);
 }
 
+
+// A scaled copy: the source address steps by srcstep (8.8 fixed point: 0x100
+// is one byte) for each destination byte, the destination by dstskip.
+void m65_dma_scale(uint32_t dst, uint32_t src, uint16_t count, uint16_t srcstep,
+                   uint8_t dstskip)
+{
+    dma_run(DMA_COPY_CMD, dst, src, count, dstskip, srcstep);
+}

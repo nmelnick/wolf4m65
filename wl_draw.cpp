@@ -337,60 +337,37 @@ static inline uint32_t ViewAddr (int x, int y)
 // rows drawn are written to the screen with one DMA job (the framebuffer's
 // columns are every 8th byte).
 //
-// The column loop, in assembly (mega65/m65_draw.s), with its inputs.
-extern "C" {
-    extern uint32_t m65_sc_tex;
-    extern int16_t m65_sc_cnt, m65_sc_yd;
-    extern uint8_t m65_sc_ytop, m65_sc_yend, m65_sc_yw;
-    extern byte m65_colbuf[];
-    uint8_t m65_scalecol (void);
-}
+// The column buffer (mega65/m65_draw.s), for the sprites.
+extern "C" byte m65_colbuf[];
 
+//
+// A wall column: one DMA copy that scales the texture column as it goes. The
+// wall is 2*yd rows high (from viewheight/2 - yd), and its 64 texels run
+// from top to bottom, so the source steps 32/yd texels a row (8.8 fixed
+// point for the DMA controller). The first visible row's texel is worked
+// out exactly; the rest follow the rounded step (under a texel off over a
+// column). The original's error-accumulating loop picks texels a little
+// differently: close, not identical.
+//
 void ScalePost()
 {
-    int ywcount, ytop, yw, yd, y, yend;
+    int yd, walltop, ytop, yend;
+    uint16_t step;
+    uint32_t first;
 
-    ywcount = yd = wallheight[postx] >> 3;
-    if(yd <= 0) yd = 100;
+    yd = wallheight[postx] >> 3;
+    if(yd <= 0) return;                 // (nothing to draw, as the original)
 
-    ytop = viewheight / 2 - ywcount;
-    if(ytop < 0) ytop = 0;
+    walltop = viewheight / 2 - yd;
+    ytop = walltop < 0 ? 0 : walltop;
+    yend = viewheight / 2 + yd - 1;
+    if(yend >= viewheight) yend = viewheight - 1;
+    if(yend < ytop) return;
 
-    yend = viewheight / 2 + ywcount - 1;
-    yw=TEXTURESIZE-1;
-
-    // Rows below the view (a close wall): the original steps through them
-    // one by one (hundreds for a close wall), taking TEXTURESIZE/2 from
-    // ywcount a row and adding yd (a texel up) whenever it is not positive.
-    // ywcount starts at yd and stays in (0, yd], so over k rows, with
-    // d = k * TEXTURESIZE/2 - ywcount: no texel if d < 0, else d / yd + 1
-    // texels, leaving yd - d % yd. The same result, with one division.
-    if(yend >= viewheight)
-    {
-        int32_t d = (int32_t) (yend - viewheight + 1) * (TEXTURESIZE/2) - ywcount;
-        if(d < 0)
-            ywcount = (int) -d;
-        else
-        {
-            yw -= (int) (d / yd) + 1;
-            ywcount = yd - (int) (d % yd);
-        }
-        yend = viewheight - 1;
-    }
-    if(yw < 0 || yend < ytop) return;
-
-    // col = texture[yw]; for rows yend down to ytop: the texture scaled
-    // (the loop of the original ScalePost below, in m65_draw.s)
-    m65_sc_tex = postsource.a;
-    m65_sc_cnt = ywcount;
-    m65_sc_yd = yd;
-    m65_sc_ytop = ytop;
-    m65_sc_yend = yend;
-    m65_sc_yw = yw;
-    y = m65_scalecol();                 // rows y..yend were drawn
-
-    m65_dma_copy_skip(ViewAddr(postx, y), (uint32_t)(uintptr_t)&m65_colbuf[y],
-                      yend - y + 1, M65_COLUMN_STEP);
+    step = (uint16_t) (((uint32_t) TEXTURESIZE / 2 << 8) / (uint16_t) yd);
+    first = ((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2)) / (uint16_t) yd;
+    m65_dma_scale(ViewAddr(postx, ytop), postsource.a + first,
+                  yend - ytop + 1, step, M65_COLUMN_STEP);
 }
 
 #else
@@ -821,32 +798,32 @@ int CalcRotate (objtype *ob)
 //
 // ScaleShape and SimpleScaleShape on the MEGA65: the sprite (a t_compshape:
 // leftpix, rightpix, dataofs[], then posts and texels) is read in place from
-// far memory. The spans are the original's, but each texture column is
-// scaled once into a column buffer (a post's texels come in with one DMA
-// read) and copied with one DMA job per post to every screen column it
-// covers, instead of one DMA job per span per screen column (thousands of
-// tiny jobs a frame). pixcnt and ycnt are 32-bit, since i * pixheight
-// overflows a 16-bit int for close sprites.
+// far memory. Each post (run of opaque texels) of a texture column is drawn
+// with one DMA copy that scales it as it goes, per screen column the texture
+// column covers; the original's spans, approximately. pixcnt is 32-bit,
+// since i * pixheight overflows a 16-bit int for close sprites.
 //
 static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                            unsigned height, bool clipwalls)
 {
     enum { MAXSEGS = 16 };
-    static byte texels[TEXTURESIZE];
-    uint8_t segtop[MAXSEGS], segend[MAXSEGS], nsegs;
+    uint8_t segtop[MAXSEGS], segcount[MAXSEGS], nsegs, k;
+    uint32_t segsrc[MAXSEGS];
     farptr shape = PM_GetSprite(shapenum);
     farptr cmdptr, line;
     uint32_t pixheight;
-    int32_t pixcnt, ycnt;
-    unsigned starty, endy, j, leftpix, rightpix;
+    int32_t pixcnt;
+    unsigned starty, endy, leftpix, rightpix;
     int actx, i, upperedge;
     int16_t newstart;
-    int scrstarty, screndy, lpix, rpix, top, bot;
-    uint8_t k;
+    int r0, r1, top, bot, lpix, rpix;
+    uint16_t step;
 
     pixheight = (uint32_t) scale * SPRITESCALEFACTOR;
     actx = xcenter - scale;
     upperedge = viewheight / 2 - scale;
+    // texels per row, 8.8 fixed point (a texel is pixheight/64 rows high)
+    step = (uint16_t) (((uint32_t) 64 << 8) / pixheight);
 
     leftpix = far_peekw(shape);
     rightpix = far_peekw(FAR_ADD(shape, 2));
@@ -864,11 +841,11 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
             if(rpix>viewwidth) rpix=viewwidth,i=rightpix+1;
 
             //
-            // Scale this texture column once, into m65_colbuf: each of its
-            // posts (runs of opaque texels) is a run of rows; the rows each
-            // texel covers are the original's spans, which follow on from
-            // one another. Then copy the runs to each screen column the
-            // texture column covers.
+            // The posts (runs of opaque texels) of this texture column: texel
+            // j covers rows (j * pixheight >> 6) + upperedge up to the next
+            // texel's, so a post is one run of rows, drawn with one scaled
+            // DMA copy per screen column (below). The first visible row's
+            // texel is exact; the rest follow the rounded step.
             //
             nsegs = 0;
             line = FAR_ADD(shape, far_peekw(cmdptr));
@@ -878,35 +855,16 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                 newstart = (int16_t) far_peekw(FAR_ADD(line, 2));
                 starty = far_peekw(FAR_ADD(line, 4)) >> 1;
                 line = FAR_ADD(line, 6);
-                far_read(texels, FAR_ADD(shape, (int32_t)newstart+starty), endy-starty);
-                top = -1;
-                bot = 0;
-                j=starty;
-                ycnt=(int32_t)j*pixheight;
-                screndy=(int)(ycnt>>6)+upperedge;
-                for(;j<endy;j++)
-                {
-                    scrstarty=screndy;
-                    ycnt+=pixheight;
-                    screndy=(int)(ycnt>>6)+upperedge;
-                    if(scrstarty!=screndy && screndy>0)
-                    {
-                        byte col = texels[j-starty];
-                        if(scrstarty<0) scrstarty=0;
-                        if(screndy>viewheight) screndy=viewheight,j=endy;
-
-                        if(scrstarty<screndy)
-                        {
-                            if(top < 0) top = scrstarty;
-                            memset(&m65_colbuf[scrstarty], col, screndy-scrstarty);
-                            bot = screndy;
-                        }
-                    }
-                }
-                if(top >= 0 && nsegs < MAXSEGS)
+                r0 = (int) (((int32_t) starty * pixheight) >> 6) + upperedge;
+                r1 = (int) (((int32_t) endy * pixheight) >> 6) + upperedge;
+                top = r0 < 0 ? 0 : r0;
+                bot = r1 > viewheight ? viewheight : r1;
+                if(top < bot && nsegs < MAXSEGS)
                 {
                     segtop[nsegs] = (uint8_t) top;
-                    segend[nsegs] = (uint8_t) bot;
+                    segcount[nsegs] = (uint8_t) (bot - top);
+                    segsrc[nsegs] = shape.a + (int32_t) newstart + starty
+                                  + ((uint32_t) (top - r0) << 6) / pixheight;
                     nsegs++;
                 }
             }
@@ -916,9 +874,8 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                 if(clipwalls && wallheight[lpix]>(int)height)
                     continue;
                 for(k = 0; k < nsegs; k++)
-                    m65_dma_copy_skip(ViewAddr(lpix, segtop[k]),
-                                      (uint32_t)(uintptr_t)&m65_colbuf[segtop[k]],
-                                      segend[k]-segtop[k], M65_COLUMN_STEP);
+                    m65_dma_scale(ViewAddr(lpix, segtop[k]), segsrc[k], segcount[k],
+                                  step, M65_COLUMN_STEP);
             }
         }
     }

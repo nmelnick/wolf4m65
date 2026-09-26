@@ -51,6 +51,9 @@ void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count);
 // framebuffer is every 8th byte; see m65_video.h's layout).
 void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip);
 void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip);
+// Scaled copy: the source steps by srcstep (8.8 fixed point) per byte copied.
+void m65_dma_scale(uint32_t dst, uint32_t src, uint16_t count, uint16_t srcstep,
+                   uint8_t dstskip);
 
 // Copy one linear scanline (width <= 320, x a multiple of 8) from normal
 // memory into the tiled framebuffer.
