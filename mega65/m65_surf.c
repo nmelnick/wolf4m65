@@ -6,10 +6,9 @@
 
 uint32_t surf_addr(const SDL_Surface *s, unsigned x, unsigned y)
 {
-    if (s->tiled)
-        return s->farpixels
-             + ((uint32_t)((y >> 3) * M65_CELLS_X + (x >> 3)) << 6)
-             + ((y & 7) << 3) + (x & 7);
+    if (s->tiled)                   // column-major cells: see m65_video.h
+        return s->farpixels + (uint32_t)(x >> 3) * M65_CELLCOL_SIZE
+             + ((uint16_t)y << 3) + (x & 7);
     return s->farpixels + (uint32_t)y * s->pitch + x;
 }
 

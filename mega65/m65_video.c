@@ -15,19 +15,24 @@ struct dma_job {
     uint8_t src_mb;
     uint8_t opt_dst_mb;       // 0x81
     uint8_t dst_mb;
+    uint8_t opt_dst_skip;     // 0x85: destination step, whole bytes
+    uint8_t dst_skip;
     uint8_t opt_end;          // 0x00
     struct DMAList_F018B list;
 };
 
 static struct dma_job job;
 
-static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count)
+static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count,
+                    uint8_t dstskip)
 {
     job.opt_f018b  = ENABLE_F018B_OPT;
     job.opt_src_mb = SRC_ADDR_BITS_OPT;
     job.src_mb     = (uint8_t)(src >> 20);
     job.opt_dst_mb = DST_ADDR_BITS_OPT;
     job.dst_mb     = (uint8_t)(dst >> 20);
+    job.opt_dst_skip = DST_SKIP_RATE_OPT;
+    job.dst_skip   = dstskip;
     job.opt_end    = 0;
 
     job.list.command     = cmd;
@@ -54,12 +59,22 @@ static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count)
 
 void m65_dma_fill(uint32_t dst, uint8_t value, uint16_t count)
 {
-    dma_run(DMA_FILL_CMD, dst, value, count);
+    dma_run(DMA_FILL_CMD, dst, value, count, 1);
 }
 
 void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count)
 {
-    dma_run(DMA_COPY_CMD, dst, src, count);
+    dma_run(DMA_COPY_CMD, dst, src, count, 1);
+}
+
+void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip)
+{
+    dma_run(DMA_COPY_CMD, dst, src, count, dstskip);
+}
+
+void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip)
+{
+    dma_run(DMA_FILL_CMD, dst, value, count, dstskip);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,14 +124,15 @@ void m65_video_init(void)
     m65_dma_fill(0xff80000UL, 0, M65_CELLS_X * M65_CELLS_Y * 2);
 
     // Full-colour character data is addressed as (cell number * 64) from
-    // address 0 (CHARPTR only applies to the normal charset), so cell n of
-    // the framebuffer is numbered FB_BASE/64 + n.
+    // address 0 (CHARPTR only applies to the normal charset). Cells are laid
+    // out column-major (see m65_video.h): the cell at column i, row y is
+    // FB_BASE/64 + i * CELLS_Y + y.
     {
         static uint8_t row[M65_CELLS_X * 2];
         unsigned i, y;
         for (y = 0; y < M65_CELLS_Y; y++) {
             for (i = 0; i < M65_CELLS_X; i++) {
-                unsigned n = (unsigned)(M65_FB_BASE >> 6) + y * M65_CELLS_X + i;
+                unsigned n = (unsigned)(M65_FB_BASE >> 6) + i * M65_CELLS_Y + y;
                 row[i * 2]     = (uint8_t)n;
                 row[i * 2 + 1] = (uint8_t)(n >> 8);
             }

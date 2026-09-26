@@ -26,6 +26,29 @@ checks = [
      title_ok == 1 and (sa, sb) == (want_a, want_b)),
     (f"SDL_GetTicks over 50 PAL frames: {ms50} ms (want 1000 +/- 1%)", 990 <= ms50 <= 1010),
 ]
+# End to end: the screenshot must show the title in the game's colours, at 2x
+# from (80, 104). Rows 30..144 are not covered by the text/picture overlays.
+# This catches framebuffer layout and palette errors that read-back cannot.
+if len(sys.argv) > 5:
+    from PIL import Image
+    title = open(sys.argv[4], "rb").read()
+    pal = [tuple(int(v) * 255 // 63 for v in m.groups())
+           for m in re.finditer(r"RGB\(\s*(\d+),\s*(\d+),\s*(\d+)\)",
+                                open(sys.argv[5]).read())]
+    shot = Image.open(sys.argv[6]).convert("RGB")
+    bad = 0
+    first = None
+    for y in range(30, 145):
+        for x in range(320):
+            want = pal[title[y * 320 + x]]
+            got = shot.getpixel((80 + 2 * x, 104 + 2 * y))
+            if any(abs(a - b) > 2 for a, b in zip(want, got)):
+                bad += 1
+                if first is None:
+                    first = (x, y, title[y * 320 + x], want, got)
+    checks.append((f"screenshot shows the title in the game palette ({bad} of "
+                   f"{115 * 320} pixels differ; first {first})", bad == 0))
+
 fail = 0
 for name, ok in checks:
     print(("PASS  " if ok else "FAIL  ") + name)

@@ -85,6 +85,12 @@ int main(void)
                     tb += ta;
                 }
             titlesum_a = ta; titlesum_b = tb;
+            // Also the linear image, for comparing against screenshots.
+            FILE *tf = fopen("mega65/build/TITLE.RAW", "wb");
+            for (int y = 0; y < 200; y++)
+                for (int x = 0; x < 320; x++)
+                    fputc(dest[(y * 80 + (x >> 2)) + (x & 3) * 80 * 200], tf);
+            fclose(tf);
         }
         total += explen;
         free(dest);

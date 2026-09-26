@@ -153,7 +153,8 @@ test-title: titletest.prg $(SDIMG)
 	python3 tools/xrun.py 120 titletest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg titletest.prg -dumpmem titletest.mem -screenshot titletest.png
 	@tr -d '\r' < titletest.ser | grep -a -A1 '^QUIT:' || true
-	python3 tools/check_titletest.py titletest.mem build/huffref.h build/SIGNON.BIN
+	python3 tools/check_titletest.py titletest.mem build/huffref.h build/SIGNON.BIN \
+	  build/TITLE.RAW $(WOLFDIR)/wolfpal.inc titletest.png
 
 # --- Far proxy types (map planes, actorat) ----------------------------------------
 
