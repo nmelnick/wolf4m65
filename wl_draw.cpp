@@ -340,6 +340,18 @@ static inline uint32_t ViewAddr (int x, int y)
 // The column buffer (mega65/m65_draw.s), for the sprites.
 extern "C" byte m65_colbuf[];
 
+// n / d straight from the math unit's divider, for drawing: its integer part
+// can be one off (m65_hwdiv.c puts that right for the C operators; a texture
+// step or texel does not need it), and it takes a few cycles.
+static inline uint16_t DivApprox (uint32_t n, uint16_t d)
+{
+    *(volatile uint32_t *) 0xD770 = n;
+    *(volatile uint32_t *) 0xD774 = d;
+    while(*(volatile uint8_t *) 0xD70F & 0x80)
+        ;
+    return *(volatile uint16_t *) 0xD76C;
+}
+
 //
 // A wall column: one DMA copy that scales the texture column as it goes. The
 // wall is 2*yd rows high (from viewheight/2 - yd), and its 64 texels run
@@ -364,9 +376,9 @@ void ScalePost()
     if(yend >= viewheight) yend = viewheight - 1;
     if(yend < ytop) return;
 
-    step = (uint16_t) (((uint32_t) TEXTURESIZE / 2 << 8) / (uint16_t) yd);
+    step = DivApprox((uint32_t) TEXTURESIZE / 2 << 8, (uint16_t) yd);
     first = ytop == walltop ? 0      // (not clipped at the top: most columns)
-          : ((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2)) / (uint16_t) yd;
+          : DivApprox((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2), (uint16_t) yd);
     m65_dma_scale(ViewAddr(postx, ytop), postsource.a + first,
                   yend - ytop + 1, step, M65_COLUMN_STEP);
 }
@@ -824,7 +836,7 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
     actx = xcenter - scale;
     upperedge = viewheight / 2 - scale;
     // texels per row, 8.8 fixed point (a texel is pixheight/64 rows high)
-    step = (uint16_t) (((uint32_t) 64 << 8) / pixheight);
+    step = DivApprox((uint32_t) 64 << 8, (uint16_t) pixheight);
 
     leftpix = far_peekw(shape);
     rightpix = far_peekw(FAR_ADD(shape, 2));
@@ -864,8 +876,9 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                 {
                     segtop[nsegs] = (uint8_t) top;
                     segcount[nsegs] = (uint8_t) (bot - top);
-                    segsrc[nsegs] = shape.a + (int32_t) newstart + starty
-                                  + ((uint32_t) (top - r0) << 6) / pixheight;
+                    segsrc[nsegs] = shape.a + (int32_t) newstart + starty;
+                    if(top != r0)       // (clipped at the top)
+                        segsrc[nsegs] += DivApprox((uint32_t) (top - r0) << 6, (uint16_t) pixheight);
                     nsegs++;
                 }
             }
