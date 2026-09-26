@@ -28,6 +28,28 @@ LIBS = ("libcrt.a", "libc.a", "libcrt0.a", "libcopy-data.a")
 # Members the MEGA65 build replaces (m65_stdio.c): console I/O through the
 # KERNAL, which is gone once the game runs.
 REPLACED = {"putchar.c.obj", "getchar.c.obj", "cbm_k_chrin.c.obj"}
+# Functions the MEGA65 build replaces with versions on the math unit's
+# hardware multiplier and divider (m65_math.c, m65_hwdiv.c): taken out of the
+# library members that define them.
+REPLACED_FUNCS = {"__mulhi3", "__mulsi3",
+                  "__udivhi3", "__divhi3", "__umodhi3", "__modhi3",
+                  "__udivsi3", "__divsi3", "__umodsi3", "__modsi3"}
+
+
+def drop_functions(asm, names):
+    """Remove the named functions (one section each: -ffunction-sections) from
+    an assembly file."""
+    lines = open(asm).read().split("\n")
+    out, skip = [], None
+    for l in lines:
+        m = re.match(r"^\s*\.section\s+\.text\.([\w.$]+),", l)
+        if m:
+            skip = m.group(1) if m.group(1) in names else None
+        elif skip and re.match(r"^\s*\.section\s", l):
+            skip = None
+        if not skip:
+            out.append(l)
+    open(asm, "w").write("\n".join(out))
 
 
 def nm(obj):
@@ -67,6 +89,7 @@ def main():
         obj = os.path.join(args.out, base + ".o")
         subprocess.check_call([CC, "-Os", "-fno-lto", "-ffunction-sections", "-x", "ir",
                                "-Wno-override-module", "-S", bc, "-o", asm])
+        drop_functions(asm, REPLACED_FUNCS)
         subprocess.check_call([CC, "-c", "-fno-lto", asm, "-o", obj])
         defined, undefined = nm(obj)
         init = ".init" in open(asm).read()

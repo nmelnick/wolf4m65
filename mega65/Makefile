@@ -42,7 +42,7 @@ wolf-objs: $(WOLFOBJS)
 
 GB        = build/game
 GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
-GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_surf m65_stdio m65_libm \
+GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_surf m65_hwdiv m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
@@ -187,8 +187,9 @@ $(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) $(PORTDATA) s:
 
 # Hardware timing test (see hwtest.c): on the D81 as HWTEST.
-hwtest.prg: hwtest.c m65_video.c m65_video.h
-	$(CC) $(CFLAGS) -fno-lto -I. -o $@ hwtest.c m65_video.c   # (LTO: clang crashes on the asm)
+hwtest.prg: hwtest.c m65_video.c m65_video.h m65_math.c m65_hwdiv.c
+	$(CC) $(CFLAGS) -fno-lto -I. -Wl,--allow-multiple-definition -o $@ \
+	  hwtest.c m65_video.c m65_math.c m65_hwdiv.c   # (LTO: clang crashes on the asm; ours before libc's)
 
 dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
 	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c

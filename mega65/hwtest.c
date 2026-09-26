@@ -6,6 +6,8 @@
 //     through the overlay window at $4000 (how the game runs its code);
 //   - reading 64KB from chip RAM and from attic RAM (32-bit pointer);
 //   - DMA copies of 64000 bytes, chip to chip and attic to chip.
+//   - the game's multiply and divide routines on the math unit (m65_math.c,
+//     m65_hwdiv.c) against a plain shift-and-subtract reference.
 // The results are shown on the screen (and sent to the debug serial port).
 // Run it straight after power-on or reset: it takes the machine over.
 
@@ -57,6 +59,94 @@ __asm__(
     "  rts\n");
 extern uint32_t hw_p;
 void hw_read64k(void);
+
+// ---- the math unit routines, against a reference --------------------------------
+
+uint32_t m65_udivmod(uint32_t n, uint32_t d);
+uint32_t __udivsi3(uint32_t, uint32_t);
+uint32_t __umodsi3(uint32_t, uint32_t);
+int32_t __divsi3(int32_t, int32_t);
+int32_t __modsi3(int32_t, int32_t);
+uint16_t __udivhi3(uint16_t, uint16_t);
+int16_t __divhi3(int16_t, int16_t);
+int16_t __modhi3(int16_t, int16_t);
+uint32_t __mulsi3(uint32_t, uint32_t);
+uint16_t __mulhi3(uint16_t, uint16_t);
+
+// n / d and n % d by shift and subtract (no library calls).
+static uint32_t ref_rem;
+static uint32_t ref_div(uint32_t n, uint32_t d)
+{
+    uint32_t q = 0, r = 0;
+    int8_t i;
+    for (i = 31; i >= 0; i--) {
+        r = r << 1 | (n >> i & 1);
+        if (r >= d) {
+            r -= d;
+            q |= 1UL << i;
+        }
+    }
+    ref_rem = r;
+    return q;
+}
+
+static uint32_t ref_mul(uint32_t a, uint32_t b)
+{
+    uint32_t p = 0;
+    while (b) {
+        if (b & 1)
+            p += a;
+        a <<= 1;
+        b >>= 1;
+    }
+    return p;
+}
+
+static uint32_t seed = 12345;
+static uint32_t rnd(void)
+{
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return seed;
+}
+
+// One pair through every routine; returns the number of wrong results.
+static uint8_t check(uint32_t a, uint32_t b)
+{
+    uint8_t bad = 0;
+    int32_t sa = (int32_t)a, sb = (int32_t)b;
+    uint32_t q, r, ua, ub;
+
+    if (__mulsi3(a, b) != ref_mul(a, b)) bad++;
+    if (__mulhi3((uint16_t)a, (uint16_t)b) != (uint16_t)ref_mul(a & 0xFFFF, b & 0xFFFF)) bad++;
+    if (!b)
+        return bad;
+    q = ref_div(a, b);
+    if (__udivsi3(a, b) != q || __umodsi3(a, b) != ref_rem) bad++;
+    if (sb != -1 || sa != (int32_t)0x80000000) {        // (overflow: undefined)
+        ua = sa < 0 ? -(uint32_t)sa : (uint32_t)sa;
+        ub = sb < 0 ? -(uint32_t)sb : (uint32_t)sb;
+        q = ref_div(ua, ub);
+        r = ref_rem;
+        if ((sa < 0) != (sb < 0)) q = -q;
+        if (sa < 0) r = -r;
+        if ((uint32_t)__divsi3(sa, sb) != q || (uint32_t)__modsi3(sa, sb) != r) bad++;
+    }
+    if ((uint16_t)b) {
+        q = ref_div(a & 0xFFFF, b & 0xFFFF);
+        if (__udivhi3((uint16_t)a, (uint16_t)b) != (uint16_t)q) bad++;
+        if ((int16_t)b != -1 || (int16_t)a != -32768) {
+            int16_t x = (int16_t)a, y = (int16_t)b;
+            uint16_t ux = x < 0 ? -(uint16_t)x : (uint16_t)x, uy = y < 0 ? -(uint16_t)y : (uint16_t)y;
+            uint16_t q16 = (uint16_t)ref_div(ux, uy), r16 = (uint16_t)ref_rem;
+            if ((x < 0) != (y < 0)) q16 = -q16;
+            if (x < 0) r16 = -r16;
+            if ((uint16_t)__divhi3(x, y) != q16 || (uint16_t)__modhi3(x, y) != r16) bad++;
+        }
+    }
+    return bad;
+}
 
 static uint16_t ms(void)
 {
@@ -217,6 +307,26 @@ int main(void)
     for (i = 0; i < 8; i++)
         m65_dma_fill(CHIP + 0x10000, 0, 64000);
     line("dma 8 x 64000 fill, chip:", ms() - t, "ms");
+
+    // The multiply and divide routines: edge cases, then random pairs of
+    // assorted sizes.
+    {
+        static const uint32_t edge[] = {
+            0, 1, 2, 3, 7, 10, 255, 256, 65535, 65536, 0x7FFFFFFFUL, 0x80000000UL,
+            0xFFFFFFFFUL, 0xFFFFFFFEUL, 1000000UL, 0x12345678UL, 0xFFFF0000UL };
+        uint16_t bad = 0, n = 0, k;
+        uint8_t i, j;
+        for (i = 0; i < sizeof edge / sizeof edge[0]; i++)
+            for (j = 0; j < sizeof edge / sizeof edge[0]; j++, n++)
+                bad += check(edge[i], edge[j]);
+        t = ms();
+        for (k = 0; k < 20000; k++, n++) {
+            uint32_t a = rnd() >> (rnd() & 31), b = rnd() >> (rnd() & 31);
+            bad += check(a, b);
+        }
+        line("math unit mul/div: wrong results", bad, "");
+        line("  (pairs checked)", n, "");
+    }
 
     row++;
     text("done. (reset to leave)");

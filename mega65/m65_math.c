@@ -40,3 +40,33 @@ int32_t m65_fixedmul(int32_t a, int32_t b)
         hi++;
     return neg ? -(int32_t)hi : (int32_t)hi;
 }
+
+// The compiler's 16- and 32-bit multiplies (llvm-mos's __mulhi3/__mulsi3,
+// which tools/libsplit.py takes out of the library), on the multiplier: the
+// low bits of the product are the same signed or unsigned. Calling
+// convention: the first factor in A, X (low first), __rc2, __rc3; the
+// second from __rc2 (16-bit) or __rc4 (32-bit); the product in A, X, __rc2,
+// __rc3. The unused high input bytes are written as 0.
+__asm__(
+    ".section .text.__mulhi3,\"ax\",@progbits\n"
+    ".globl __mulhi3\n"
+    ".type __mulhi3,@function\n"
+    "__mulhi3:\n"
+    "  sta $d770\n stx $d771\n"
+    "  lda __rc2\n sta $d774\n lda __rc3\n sta $d775\n"
+    "  lda #0\n sta $d772\n sta $d773\n sta $d776\n sta $d777\n"
+    "  lda $d778\n ldx $d779\n"
+    "  rts\n"
+    ".size __mulhi3, . - __mulhi3\n"
+    ".section .text.__mulsi3,\"ax\",@progbits\n"
+    ".globl __mulsi3\n"
+    ".type __mulsi3,@function\n"
+    "__mulsi3:\n"
+    "  sta $d770\n stx $d771\n"
+    "  lda __rc2\n sta $d772\n lda __rc3\n sta $d773\n"
+    "  lda __rc4\n sta $d774\n lda __rc5\n sta $d775\n"
+    "  lda __rc6\n sta $d776\n lda __rc7\n sta $d777\n"
+    "  lda $d77a\n sta __rc2\n lda $d77b\n sta __rc3\n"
+    "  lda $d778\n ldx $d779\n"
+    "  rts\n"
+    ".size __mulsi3, . - __mulsi3\n");

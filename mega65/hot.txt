@@ -4,6 +4,11 @@ _Z10AsmRefreshv
 wl_draw___ZL13ScaleShapeFariijjb
 _Z9ScalePostv
 __udivsi3
+m65_udivmod
+__umodsi3
+__modsi3
+__umodhi3
+__modhi3
 __divsi3
 _Z12HitHorizWallv
 _Z11HitVertWallv
