@@ -2,8 +2,9 @@
 
 A port of Wolf4SDL to the MEGA65, built with llvm-mos. Work in progress:
 the shareware episode loads, the sign-on screen, title and demo run, and the
-3D view matches the original code pixel for pixel. There is no sound yet,
-and the game is slow: about 3 frames per second in Xemu's timing (`make
+3D view matches the original code pixel for pixel. The music plays on
+three SIDs (from the MIDI originals, see below); there are no sound effects
+yet, and the game is slow: about 3 frames per second in Xemu's timing (`make
 fps`; real hardware may differ, DMA especially).
 
 ## Running it on a MEGA65
@@ -18,6 +19,7 @@ sdcard` gathers them in `build/sdcard/`):
 | `WOLF.DAT` | the program's data |
 | `SIGNON.BIN`, `TABLES.BIN` | the sign-on screen and precomputed tables |
 | `AUDIOHED.WL1`, `AUDIOT.WL1`, `GAMEMAPS.WL1`, `MAPHEAD.WL1`, `VGADICT.WL1`, `VGAGRAPH.WL1`, `VGAHEAD.WL1`, `VSWAP.WL1` | the shareware game data (v1.4), not included: bring your own |
+| `MUSIC.DAT` | the music (optional: without it the game is silent), built from your own copy of the MIDI originals |
 
 Then, on the MEGA65:
 
@@ -40,6 +42,11 @@ You need:
 
 - [llvm-mos](https://github.com/llvm-mos/llvm-mos-sdk) in `~/opt/llvm-mos`
 - the shareware data (`*.WL1`) in the repository root (git ignores them)
+- for music: Bobby Prince's original MIDI files, named `NN - title.mid` as
+  on the soundtrack (`03 - Get Them Before They Get You (E1M1).mid` and so
+  on), in `mega65/` (git ignores them). The build converts them into
+  `build/MUSIC.DAT`. Neither the MIDI files nor `MUSIC.DAT` may be passed on,
+  so `make dist` leaves the music out, like the game data.
 - Python 3; mtools (`mcopy`) and Xemu (`xemu-xmega65`) for the tests; VICE's
   `c1541` for the disk image; `g++` for the host reference; Pillow (PIL) for
   some checks
@@ -64,6 +71,7 @@ Run them in `mega65/`.
 | `make test-host test-proxy test-ovl test-dos test-load test-huff test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |
 | `make sid-midi` | the MIDI originals (put the `.mid` files in `mega65/`) as 3-SID files (`build/sid-midi/`) |
+| `make build/MUSIC.DAT` | the game's music from the MIDI files (the targets above make it when they need it) |
 | `make clean` | remove what was built |
 
 Options:

@@ -268,7 +268,9 @@ class Voice:
         self.level = 1.0
 
 
-def convert(events, end):
+def convert(events, end, resumable=False):
+    """resumable: every note writes all of its voice's setup, so that playing
+    can start at any record (for the game, which resumes songs)."""
     out = []                            # (tick, order, register, value)
     voices = [Voice(k) for k in range(9)]
     program = [0] * 16
@@ -279,8 +281,8 @@ def convert(events, end):
     rpn = [(127, 127)] * 16
     last_tick = 0
 
-    def w(t, order, v, reg, val):
-        out.append((t, order, v.base + reg, val & 0xFF))
+    def w(t, order, v, reg, val, force=False):
+        out.append((t, order, v.base + reg, val & 0xFF, force and resumable))
 
     def level(ch, vel):
         return ((vel / 127) * volume[ch] / 127 * expression[ch] / 127) ** 0.5
@@ -329,13 +331,14 @@ def convert(events, end):
             v.level = level(ch, vel)
             hz = voice_pitch(v, ch)
             f = patch.raw if patch.raw else freq_reg(hz)
-            w(t, 1, v, 0, f)
-            w(t, 1, v, 1, f >> 8)
-            w(t, 1, v, 2, patch.pw)
-            w(t, 1, v, 3, patch.pw >> 8)
-            w(t, 1, v, 5, patch.a << 4 | patch.d)
-            w(t, 1, v, 6, sustain(v) << 4 | patch.r)
-            w(t, 2, v, 4, patch.wave | 1)
+            # (resumable: all of the voice's setup, even what it has already)
+            w(t, 1, v, 0, f, True)
+            w(t, 1, v, 1, f >> 8, True)
+            w(t, 1, v, 2, patch.pw, True)
+            w(t, 1, v, 3, patch.pw >> 8, True)
+            w(t, 1, v, 5, patch.a << 4 | patch.d, True)
+            w(t, 1, v, 6, sustain(v) << 4 | patch.r, True)
+            w(t, 2, v, 4, patch.wave | 1, True)
             for dt, factor in patch.sweep:
                 f = freq_reg(hz * factor)
                 w(t + dt, 1, v, 0, f)
@@ -369,28 +372,28 @@ def convert(events, end):
 
     # Records: the writes of each tick (the last write to a register wins,
     # except the control registers, whose every change counts), without the
-    # ones that change nothing.
+    # ones that change nothing (unless forced: a note's setup).
     init = []
     for sid in range(3):
         init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, 0x0F)]
     out.sort(key=lambda e: (e[0], e[1]))
     ticks = {}
-    for t, order, reg, val in out:
-        ticks.setdefault(t, []).append((reg, val))
+    for t, order, reg, val, force in out:
+        ticks.setdefault(t, []).append((reg, val, force))
     shadow = {}
     records = [(init, 0)]
     prev = 0
     for t in sorted(ticks):
         writes, seen = [], {}
-        for reg, val in ticks[t]:
+        for reg, val, force in ticks[t]:
             if reg % 7 == 4 and reg % 0x20 < 0x15:
-                writes.append((reg, val))
+                writes.append((reg, val, force))
             else:
-                seen[reg] = val
-        writes = [(r, v) for r, v in seen.items()] + writes     # settings before gates
+                seen[reg] = (val, force or seen.get(reg, (0, False))[1])
+        writes = [(r, v, f) for r, (v, f) in seen.items()] + writes    # settings before gates
         kept = []
-        for reg, val in writes:
-            if shadow.get(reg) != val:
+        for reg, val, force in writes:
+            if force or shadow.get(reg) != val:
                 kept.append((reg, val))
                 shadow[reg] = val
         if not kept:
@@ -408,12 +411,58 @@ def convert(events, end):
     return records, loop / RATE
 
 
+# The game's songs (musicnames in audiowl6.h, in order) and the numbers of
+# their MIDI files ("NN - title.mid"). Checked against the shareware AdLib
+# data by notes and timing; the rest by title and the game's level table.
+GAME_SONGS = [
+    ("CORNER", 8), ("DUNGEON", 13), ("WARMARCH", 7), ("GETTHEM", 3),
+    ("HEADACHE", 12), ("HITLWLTZ", 24), ("INTROCW3", 14), ("NAZI_NOR", 1),
+    ("NAZI_OMI", 9), ("POW", 5), ("SALUTE", 25), ("SEARCHN", 4),
+    ("SUSPENSE", 6), ("VICTORS", 26), ("WONDERIN", 2), ("FUNKYOU", 20),
+    ("ENDLEVEL", 21), ("GOINGAFT", 11), ("PREGNANT", 10), ("ULTIMATE", 18),
+    ("NAZI_RAP", 15), ("ZEROHOUR", 17), ("TWELFTH", 16), ("ROSTER", 23),
+    ("URAHERO", 22), ("VICMARCH", 27), ("PACMAN", 19),
+]
+
+
+def write_game(path, mididir):
+    """MUSIC.DAT for the game (mega65/m65_sd.cpp, m65_music.s):
+         "WMUS", version 1, song count, ticks per second (16 bits),
+         a 32-bit file offset per song (0: no such song), the songs' data
+         (the player's records, as in the .sid files).
+    Songs whose MIDI file is missing are left out."""
+    streams, found = [], 0
+    for name, num in GAME_SONGS:
+        files = [f for f in os.listdir(mididir)
+                 if re.match(rf"0*{num}\s*-.*\.mid$", f, re.I)]
+        if not files:
+            streams.append(b"")
+            continue
+        events, end = read_midi(os.path.join(mididir, files[0]))
+        records, _ = convert(events, end, resumable=True)
+        streams.append(encode(records))
+        found += 1
+    head = b"WMUS" + struct.pack("<BBH", 1, len(streams), RATE)
+    pos = len(head) + 4 * len(streams)
+    offsets, body = [], b""
+    for data in streams:
+        assert len(data) < 0x10000, "a song must be under 64KB (the game resumes by offset)"
+        offsets.append(pos + len(body) if data else 0)
+        body += data
+    open(path, "wb").write(head + struct.pack(f"<{len(offsets)}I", *offsets) + body)
+    print(f"{path}: {found} of {len(GAME_SONGS)} songs, {len(head) + 4 * len(streams) + len(body)} bytes")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("outdir")
-    ap.add_argument("midi", nargs="+")
+    ap.add_argument("outdir", help="where the .sid files go (with --game: MUSIC.DAT's path)")
+    ap.add_argument("midi", nargs="*", help="the .mid files (with --game: their directory)")
     ap.add_argument("--model", default="8580", choices=("6581", "8580"))
+    ap.add_argument("--game", action="store_true", help="write MUSIC.DAT for the game")
     args = ap.parse_args()
+    if args.game:
+        write_game(args.outdir, args.midi[0] if args.midi else ".")
+        return
     os.makedirs(args.outdir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         code, init, play = build_player(tmp, RATE)

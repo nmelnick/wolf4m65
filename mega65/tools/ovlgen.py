@@ -383,6 +383,10 @@ SECTIONS {{
      * file. This rule must come before .rodata's, which would claim them. */
     .rodata_far : {{ *(.rodata.[!s]*) }} > mid AT> dataimg
 
+    /* Resident code that does not fit prg (e.g. the music interrupt):
+     * loaded with .data from the data file, so usable after m65_startup. */
+    .midtext : {{ *(.midtext*) }} > mid AT> dataimg
+
     .rodata : {{ INCLUDE rodata-sections.ld }} > lowmem AT> loadarea
     __rodata_start = ADDR(.rodata);
     __rodata_load_start = LOADADDR(.rodata);
