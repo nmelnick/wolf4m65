@@ -218,3 +218,5 @@ pip-log.txt
 mega65/*.prg
 mega65/*.elf
 mega65/*.o
+mega65/*.png
+mega65/*.mem
