@@ -3,7 +3,8 @@
 A port of Wolf4SDL to the MEGA65, built with llvm-mos. Work in progress:
 the shareware episode loads, the sign-on screen, title and demo run, and the
 3D view matches the original code pixel for pixel. There is no sound yet,
-and the game is slow (about 1 frame per second in Xemu).
+and the game is slow: about 3 frames per second in Xemu's timing (`make
+fps`; real hardware may differ, DMA especially).
 
 ## Running it on a MEGA65
 
@@ -58,6 +59,7 @@ Run them in `mega65/`.
 | `make run-xemu` | play it in Xemu (a window), on `build/sd.img` |
 | `make run-wolf` | run it headless for `RUNSECS` seconds (60); keeps `wolf.png` (screenshot) and `wolf.ser` (debug output) |
 | `make fps` | run the first demo and print the frame times |
+| `make profile` | sample where the time goes during the demo (`FRAME=N`: to frame N) |
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
 | `make test-host test-proxy test-ovl test-dos test-load test-huff test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |
