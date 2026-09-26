@@ -1,8 +1,9 @@
 // Taking over the machine: the memory layout of the overlay build
 // (tools/ovlgen.py's linker script) needs the KERNAL gone.
 //
-//   $0300-$1FFF  .rodata, copied here from its load address in the PRG
-//   $2001-$3FFF  resident code
+//   $0300-$1FFF  .rodata (copied here from its load address in the PRG),
+//                then .lowbss (zeroed here)
+//   $2001-$3FFF  resident code, then .prgbss (zeroed here)
 //   $4000-$7FFF  overlay window (at load time: the PRG's copy sources)
 //   $8000-$CFFF  .data, .bss, heap, soft stack
 //   $E000-$FFF9  .highbss (large arrays), zeroed here
@@ -14,12 +15,15 @@
 #include <stdint.h>
 
 #include "m65_debug.h"
+#include "m65_dos.h"
 #include "m65_platform.h"
 #include "ovl/ovl_load.h"
 #include "m65_video.h"
 
 extern char __rodata_start[], __rodata_load_start[], __rodata_size[];
 extern char __highbss_start[], __highbss_size[];
+extern char __lowbss_start[], __lowbss_size[];
+extern char __prgbss_start[], __prgbss_size[];
 
 // NMI (RESTORE key): ignore. IRQ/BRK: interrupts are off, so this is a BRK,
 // i.e. a jump into zeroed memory: report it and stop with a red border.
@@ -52,26 +56,44 @@ void m65_takeover(void)
     *(volatile uint16_t *)0xFFFC = (uint16_t)(uintptr_t)m65_irq;
     *(volatile uint16_t *)0xFFFE = (uint16_t)(uintptr_t)m65_irq;
 
-    if ((uint16_t)(uintptr_t)__rodata_size)
-        m65_dma_copy((uint32_t)(uintptr_t)__rodata_start,
-                     (uint32_t)(uintptr_t)__rodata_load_start,
-                     (uint16_t)(uintptr_t)__rodata_size);
-    if ((uint16_t)(uintptr_t)__highbss_size)
-        m65_dma_fill((uint32_t)(uintptr_t)__highbss_start, 0,
-                     (uint16_t)(uintptr_t)__highbss_size);
+    // (Empty regions are fine: the DMA helpers ignore a count of 0.)
+    m65_dma_copy((uint32_t)(uintptr_t)__rodata_start,
+                 (uint32_t)(uintptr_t)__rodata_load_start,
+                 (uint16_t)(uintptr_t)__rodata_size);
+    m65_dma_fill((uint32_t)(uintptr_t)__highbss_start, 0,
+                 (uint16_t)(uintptr_t)__highbss_size);
+    m65_dma_fill((uint32_t)(uintptr_t)__lowbss_start, 0,
+                 (uint16_t)(uintptr_t)__lowbss_size);
+    m65_dma_fill((uint32_t)(uintptr_t)__prgbss_start, 0,
+                 (uint16_t)(uintptr_t)__prgbss_size);
 }
 
-void m65_startup(const char *ovlfile)
+extern char __m65_data_start[], __m65_data_size[];
+
+static void fail(const char *what, const char *file)
 {
-    int rc;
+    m65_debug_puts(what);
+    m65_debug_puts(file);
+    for (;;)
+        *(volatile uint8_t *)0xD020 = 2;
+}
+
+void m65_startup(const char *ovlfile, const char *datafile)
+{
+    uint16_t size = (uint16_t)(uintptr_t)__m65_data_size;
+    int fd = -1;
 
     m65_takeover();
 
-    rc = ovl_load(ovlfile);
-    if (rc != 0) {
-        m65_debug_puts("m65_startup: cannot load the code overlays:");
-        m65_debug_puts(ovlfile);
-        for (;;)
-            *(volatile uint8_t *)0xD020 = 2;
+    // .data comes from its own file (it is not in the PRG).
+    if (size) {
+        if (m65_dos_init() != 0 || (fd = m65_dos_open(datafile)) < 0)
+            fail("m65_startup: cannot open the data file:", datafile);
+        if (m65_dos_read(fd, (uint32_t)(uintptr_t)__m65_data_start, size) != size)
+            fail("m65_startup: the data file does not match the program:", datafile);
+        m65_dos_close(fd);
     }
+
+    if (ovl_load(ovlfile) != 0)
+        fail("m65_startup: cannot load the code overlays:", ovlfile);
 }

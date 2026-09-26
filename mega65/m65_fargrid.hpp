@@ -18,7 +18,7 @@ public:
     class Ref
     {
     public:
-        explicit Ref (uint32_t addr) : a(addr) {}
+        constexpr explicit Ref (uint32_t addr) : a(addr) {}
 
         operator T * () const { return (T *) (uintptr_t) far_peekw(FAR(a)); }
         explicit operator uintptr_t () const { return far_peekw(FAR(a)); }
@@ -35,7 +35,7 @@ public:
     class Row
     {
     public:
-        explicit Row (uint32_t addr) : a(addr) {}
+        constexpr explicit Row (uint32_t addr) : a(addr) {}
         Ref operator[] (int y) const { return Ref(a + (uint16_t) (2 * y)); }
     private:
         uint32_t a;
@@ -70,7 +70,7 @@ public:
     class Ref
     {
     public:
-        explicit Ref (uint16_t off) : o(off) {}
+        constexpr explicit Ref (uint16_t off) : o(off) {}
 
         operator uint8_t () const { return far_peek(FAR(base + o)); }
         Ref &operator= (uint8_t v) { far_poke(FAR(base + o), v); return *this; }
@@ -93,8 +93,8 @@ public:
     class Ptr
     {
     public:
-        Ptr () : o(0) {}
-        explicit Ptr (uint16_t off) : o(off) {}
+        constexpr Ptr () : o(0) {}
+        constexpr explicit Ptr (uint16_t off) : o(off) {}
 
         Ref operator* () const { return Ref(o); }
         Ref operator[] (int i) const { return Ref((uint16_t) (o + i)); }
@@ -111,7 +111,7 @@ public:
     class Row
     {
     public:
-        explicit Row (uint16_t off) : o(off) {}
+        constexpr explicit Row (uint16_t off) : o(off) {}
         Ref operator[] (int y) const { return Ref((uint16_t) (o + y)); }
     private:
         uint16_t o;

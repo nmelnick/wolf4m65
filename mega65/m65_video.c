@@ -23,9 +23,14 @@ struct dma_job {
 
 static struct dma_job job;
 
+// A count of 0 does nothing (to the DMA controller it means 64KB). Callers
+// rely on this: e.g. m65_takeover passes linker-symbol sizes, which the
+// compiler assumes to be non-zero, so a guard there is optimised away.
 static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count,
                     uint8_t dstskip)
 {
+    if (!count)
+        return;
     job.opt_f018b  = ENABLE_F018B_OPT;
     job.opt_src_mb = SRC_ADDR_BITS_OPT;
     job.src_mb     = (uint8_t)(src >> 20);

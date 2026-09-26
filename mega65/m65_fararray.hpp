@@ -17,7 +17,7 @@ public:
     class Ref
     {
     public:
-        explicit Ref (uint32_t addr) : a(addr) {}
+        constexpr explicit Ref (uint32_t addr) : a(addr) {}
 
         // 2- and 4-byte elements use flat access (fast); others use DMA.
         operator T () const

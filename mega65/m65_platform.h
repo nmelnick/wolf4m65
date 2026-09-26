@@ -11,11 +11,11 @@ extern "C" {
 // data placed in high memory is used. Afterwards the KERNAL is gone.
 void m65_takeover(void);
 
-// Everything the game needs before its own code runs: takeover and loading
-// the code overlays (overlay file `ovlfile`). Resident, and
-// calls nothing in an overlay; on failure it reports on the debug serial
-// port and stops with a red border.
-void m65_startup(const char *ovlfile);
+// Everything the game needs before its own code runs: takeover, loading the
+// initialised data (.data, from `datafile`) and the code overlays (from
+// `ovlfile`). Resident, and calls nothing in an overlay; on failure it
+// reports on the debug serial port and stops with a red border.
+void m65_startup(const char *ovlfile, const char *datafile);
 
 #ifdef __cplusplus
 }

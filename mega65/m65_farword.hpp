@@ -1,3 +1,7 @@
+// (Constructors are constexpr: globals of these types must be initialised at
+// compile time. A dynamic initialiser would run before main, i.e. before the
+// code overlays are loaded.)
+//
 // A pointer to 16-bit words in far memory that behaves like `word *`, so code
 // walking the map planes (mapsegs, MAPSPOT) runs unchanged with the planes in
 // far memory. Dereferencing yields a FarWord: reading it converts to a word
@@ -12,7 +16,7 @@
 class FarWord
 {
 public:
-    explicit FarWord (uint32_t addr) : a(addr) {}
+    constexpr explicit FarWord (uint32_t addr) : a(addr) {}
 
     operator uint16_t () const { return far_peekw(FAR(a)); }
 
@@ -28,8 +32,8 @@ private:
 class FarWordPtr
 {
 public:
-    FarWordPtr () : a(0) {}
-    FarWordPtr (farptr p) : a(p.a) {}
+    constexpr FarWordPtr () : a(0) {}
+    constexpr FarWordPtr (farptr p) : a(p.a) {}
 
     FarWord operator* () const { return FarWord(a); }
     FarWord operator[] (int32_t i) const { return FarWord(a + 2 * i); }

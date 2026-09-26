@@ -2071,7 +2071,7 @@ void CheckParameters(int argc, char *argv[])
 */
 
 #ifdef MEGA65
-static int wolf_main (int argc, char *argv[]);
+__attribute__((noinline)) static int wolf_main (int argc, char *argv[]);
 
 //
 // The resident entry point: take the machine over and load the code
@@ -2079,7 +2079,7 @@ static int wolf_main (int argc, char *argv[]);
 //
 int main (int argc, char *argv[])
 {
-    m65_startup ("wolf.ovl");
+    m65_startup ("wolf.ovl", "wolf.dat");
     __set_heap_limit (__get_heap_max_safe_size ());  // (llvm-mos starts small)
     return wolf_main (argc, argv);
 }

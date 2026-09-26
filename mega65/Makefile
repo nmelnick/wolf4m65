@@ -97,6 +97,7 @@ wolf.prg: $(GB)/ovl.ld $(RESIDENT)
 	$(CXX) -Os -fno-lto -I. -T $(GB)/ovl.ld -Wl,--no-check-sections -o $@ \
 	  $(GB)/*.ovl.s $(GB)/ovl_thunks.s $(RESIDENT) $$(cat $(GB)/lib/resident.txt)
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(GB)/plan.txt) $(GB)/WOLF.OVL
+	llvm-objcopy -O binary --only-section=.rodata_far --only-section=.data $@.elf $(GB)/WOLF.DAT
 
 # --- Tests that need an SD card ---------------------------------------------
 # Xemu boots the real Hyppo firmware from a copy of your Xemu SD image; the
@@ -159,9 +160,10 @@ ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65
 	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
 	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
+	llvm-objcopy -O binary --only-section=.rodata_far --only-section=.data $@.elf $(OT)/OVLTEST.DAT
 
 test-ovl: ovltest.prg $(SDIMG)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(OT)/OVLTEST.OVL s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(OT)/OVLTEST.OVL $(OT)/OVLTEST.DAT s:
 	python3 tools/xrun.py 60 ovltest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg ovltest.prg -dumpmem ovltest.mem
 	python3 tools/check_ovltest.py ovltest.mem

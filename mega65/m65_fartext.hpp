@@ -11,8 +11,8 @@
 class FarText
 {
 public:
-    FarText () : a(0) {}
-    FarText (farptr p) : a(p.a) {}
+    constexpr FarText () : a(0) {}
+    constexpr FarText (farptr p) : a(p.a) {}
 
     char operator* () const { return (char) far_peek(FAR(a)); }
 

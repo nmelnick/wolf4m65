@@ -25,35 +25,38 @@ class FarStructCache
 public:
     static uint32_t base;
     static int16_t  cached;             // element index in the cache, -1: none
-    static T        cache;
+    // Raw storage, not a T: T may have members with constructors, and a
+    // global T would then need a dynamic initialiser, which runs before main
+    // (before the code overlays are loaded).
+    alignas(T) static uint8_t cache[sizeof(T)];
 
     static void flush (void)
     {
         if (cached >= 0)
-            far_write(FAR(base + (uint32_t) cached * sizeof(T)), &cache, sizeof(T));
+            far_write(FAR(base + (uint32_t) cached * sizeof(T)), cache, sizeof(T));
     }
 
     static T *load (int16_t i)
     {
         if (cached != i) {
             flush();
-            far_read(&cache, FAR(base + (uint32_t) i * sizeof(T)), sizeof(T));
+            far_read(cache, FAR(base + (uint32_t) i * sizeof(T)), sizeof(T));
             cached = i;
         }
-        return &cache;
+        return reinterpret_cast<T *>(cache);
     }
 };
 
 template <class T> uint32_t FarStructCache<T>::base;
 template <class T> int16_t  FarStructCache<T>::cached = -1;
-template <class T> T        FarStructCache<T>::cache;
+template <class T> alignas(T) uint8_t FarStructCache<T>::cache[sizeof(T)];
 
 template <class T>
 class FarStructPtr
 {
 public:
-    FarStructPtr () : i(0) {}
-    explicit FarStructPtr (int16_t index) : i(index) {}
+    constexpr FarStructPtr () : i(0) {}
+    constexpr explicit FarStructPtr (int16_t index) : i(index) {}
 
     T *operator-> () const { return FarStructCache<T>::load(i); }
     T &operator* () const { return *FarStructCache<T>::load(i); }
@@ -83,7 +86,7 @@ public:
     class Ref
     {
     public:
-        explicit Ref (int16_t index) : i(index) {}
+        constexpr explicit Ref (int16_t index) : i(index) {}
         FarStructPtr<T> operator& () const { return FarStructPtr<T>(i); }
         T *operator-> () const { return FarStructCache<T>::load(i); }
     private:
