@@ -159,3 +159,16 @@ int stat(const char *path, struct stat *buf)
         buf->st_size = (long)loaded[f].size;
     return 0;
 }
+
+// The SD card is read-only to the game for now.
+int unlink(const char *name)
+{
+    (void)name;
+    return -1;
+}
+
+int mkdir(const char *name, ...)
+{
+    (void)name;
+    return -1;
+}

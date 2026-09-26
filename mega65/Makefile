@@ -33,10 +33,70 @@ obj/m65_vl.o: m65_vl.cpp m65_compat.h SDL.h
 
 wolf-objs: $(WOLFOBJS)
 
-# Code/data size per section over all Wolf4SDL objects.
-size: wolf-objs
-	@for f in $(WOLFOBJS); do llvm-size -A $$f; done | \
-	  awk '/^\./ {split($$1,a,"."); s[a[2]]+=$$2} END {for (k in s) print s[k], k}' | sort -rn
+# --- The game ---------------------------------------------------------------------
+# Every game source and the overlay-able MEGA65 layers are compiled to
+# assembly and split into code overlays by ovlgen; main stays resident.
+# Resident as normal objects: the overlay runtime and loader, DMA and far
+# primitives, file access (needed to load the overlays), the takeover.
+
+GB        = build/game
+GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
+GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_surf m65_stdio m65_libm \
+            m65_video_init m65_far_alloc
+GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
+RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c
+RESIDENT  = $(GB)/ovl_rt.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
+
+$(GB)/ovl_rt.o: ovl/ovl_rt.s
+	@mkdir -p $(GB)
+	$(CC) -c -fno-lto -o $@ $<
+
+$(GB)/res_%.o: %.c $(M65HDRS)
+	@mkdir -p $(GB)
+	$(CC) -Os -fno-lto -Wall -I. -c -o $@ $<
+
+$(GB)/res_%.o: ovl/%.c
+	@mkdir -p $(GB)
+	$(CC) -Os -fno-lto -Wall -I. -c -o $@ $<
+
+M65HDRS   = $(wildcard m65_*.h m65_*.hpp) SDL.h
+
+$(GB)/%.s: $(WOLFDIR)/%.cpp $(M65HDRS) $(wildcard $(WOLFDIR)/*.h)
+	@mkdir -p $(GB)
+	$(CXX) $(WOLFFLAGS) -ffunction-sections -S -o $@ $<
+
+$(GB)/m65_%.s: m65_%.cpp $(M65HDRS) $(wildcard $(WOLFDIR)/*.h)
+	@mkdir -p $(GB)
+	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -ffunction-sections -S -o $@ $<
+
+$(GB)/m65_%.s: m65_%.c $(M65HDRS)
+	@mkdir -p $(GB)
+	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections -S -o $@ $<
+
+# Stage 1: a probe link of the game's code alone, to learn which library
+# members it pulls in. Stage 2: libsplit compiles those (bitcode) to
+# assembly and decides which stay resident. Stage 3: ovlgen over the game
+# and the library's overlay-able code, and the real link.
+
+$(GB)/why.txt: $(GAMEASM) $(RESIDENT) tools/ovlgen.py
+	python3 tools/ovlgen.py --out $(GB)/probe --resident-funcs main $(GAMEASM) > /dev/null
+	$(CXX) -Os -fno-lto -I. -T $(GB)/probe/ovl.ld -Wl,--no-check-sections \
+	  -Wl,--noinhibit-exec -Wl,--why-extract=$@ -o $(GB)/probe/probe.prg \
+	  $(GB)/probe/*.ovl.s $(GB)/probe/ovl_thunks.s $(RESIDENT) 2>/dev/null || true
+
+$(GB)/lib/overlay.txt: $(GB)/why.txt $(RESIDENT) tools/libsplit.py
+	python3 tools/libsplit.py --why $< --out $(GB)/lib $(RESIDENT)
+
+$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py
+	rm -f $(GB)/*.ovl.s
+	python3 tools/ovlgen.py --out $(GB) --resident-funcs main \
+	  --extern-objs $$(echo $(RESIDENT) $$(sed 's/\.s$$/.o/' $(GB)/lib/resident.txt) | tr ' ' ',') \
+	  $(GAMEASM) $$(cat $(GB)/lib/overlay.txt)
+
+wolf.prg: $(GB)/ovl.ld $(RESIDENT)
+	$(CXX) -Os -fno-lto -I. -T $(GB)/ovl.ld -Wl,--no-check-sections -o $@ \
+	  $(GB)/*.ovl.s $(GB)/ovl_thunks.s $(RESIDENT) $$(cat $(GB)/lib/resident.txt)
+	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(GB)/plan.txt) $(GB)/WOLF.OVL
 
 # --- Tests that need an SD card ---------------------------------------------
 # Xemu boots the real Hyppo firmware from a copy of your Xemu SD image; the
@@ -86,11 +146,16 @@ $(OT)/%.s: ovltest/%.c ovltest/ovltest.h
 	@mkdir -p $(OT)
 	$(CC) -Os -fno-lto -ffunction-sections -S -o $@ $<
 
-$(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s tools/ovlgen.py
-	python3 tools/ovlgen.py --out $(OT) --per-file $(OT)/ov1.s $(OT)/ov2.s
+$(OT)/main.o: ovltest/main.c ovltest/ovltest.h
+	@mkdir -p $(OT)
+	$(CC) -Os -fno-lto -Wall -I. -c -o $@ $<
 
-ovltest.prg: $(OT)/ovl.ld ovltest/main.c ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
-	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ ovltest/main.c \
+$(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s $(OT)/main.o tools/ovlgen.py
+	python3 tools/ovlgen.py --out $(OT) --per-file --extern-objs $(OT)/main.o \
+	  $(OT)/ov1.s $(OT)/ov2.s
+
+ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
+	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ $(OT)/main.o \
 	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
 	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
@@ -128,8 +193,8 @@ build/huffref.h: tools/gen_huffref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_huffref.py $@
 
-hufftest.prg: hufftest.c build/huffref.h m65_huff.c m65_huff.h m65_far.c m65_far.h m65_dos.c m65_video.c
-	$(CC) $(CFLAGS) -o $@ hufftest.c m65_huff.c m65_far.c m65_dos.c m65_video.c
+hufftest.prg: hufftest.c build/huffref.h m65_huff.c m65_huff.h m65_far.c m65_far_alloc.c m65_far.h m65_dos.c m65_video.c
+	$(CC) $(CFLAGS) -o $@ hufftest.c m65_huff.c m65_far.c m65_far_alloc.c m65_dos.c m65_video.c
 
 test-huff: hufftest.prg $(SDIMG)
 	python3 tools/xrun.py 600 hufftest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
@@ -142,7 +207,8 @@ build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_mapref.py $@
 
-M65LIB = m65_assert.c m65_libm.c m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
+M65LIB = m65_assert.c m65_libm.c m65_far.c m65_far_alloc.c m65_huff.c m65_mapexp.c m65_posix.c \
+         m65_dos.c m65_video.c m65_video_init.c
 
 catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
 	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
@@ -188,8 +254,8 @@ all: hello.prg vtest.prg
 hello.prg: hello.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-vtest.prg: vtest.c m65_video.c m65_video.h
-	$(CC) $(CFLAGS) -o $@ vtest.c m65_video.c
+vtest.prg: vtest.c m65_video.c m65_video_init.c m65_video.h
+	$(CC) $(CFLAGS) -o $@ vtest.c m65_video.c m65_video_init.c
 
 # Run a PRG headless for a while and save a screenshot: make shot PRG=vtest.prg
 shot: $(PRG)

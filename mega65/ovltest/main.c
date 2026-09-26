@@ -18,6 +18,7 @@ struct report {
     uint8_t  cur;               // __ovl_cur at the end
     uint8_t  layout_ok;         // rodata in lowmem, objlist in high memory, zeroed
     uint16_t rodata_at, objlist_at;
+    uint16_t inner20;           // via_inner(20): a thunk-less direct call inside ov1
 };
 
 // Layout checks: a read-only table (.rodata: copied to $0300+ by
@@ -56,6 +57,7 @@ int main(void)
         rep.tail4       = tail(4);
         rep.deep6       = deep(6);
         rep.after       = add3(10, 20, 30);
+        rep.inner20     = via_inner(20);
         rep.cur         = __ovl_cur;
     }
     rep.magic = 0xEE;

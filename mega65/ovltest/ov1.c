@@ -10,3 +10,6 @@ int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }   // recursion
 int call_other(int x) { return ov2_f(x) + 1; }           // overlay -> other overlay
 int tail(int x) { return add3(x, x, x); }                 // compiles to a tail jump
 int deep(int n) { return n == 0 ? 0 : 1 + deep2(n - 1); } // ping-pong between overlays
+// Only called from this overlay: gets no thunk; calls go straight to the body.
+__attribute__((noinline)) static int inner(int x) { return x + 1; }
+int via_inner(int x) { return inner(x) * 2; }                  // resident -> ov1 -> direct

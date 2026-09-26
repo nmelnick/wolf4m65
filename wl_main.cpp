@@ -9,6 +9,7 @@
 #include "wl_def.h"
 #ifdef MEGA65
 #include "m65_posix.h"
+#include "m65_platform.h"
 #endif
 #pragma hdrstop
 #include "wl_atmos.h"
@@ -2069,7 +2070,24 @@ void CheckParameters(int argc, char *argv[])
 ==========================
 */
 
+#ifdef MEGA65
+static int wolf_main (int argc, char *argv[]);
+
+//
+// The resident entry point: take the machine over and load the code
+// overlays before anything else, then run the game (in an overlay).
+//
 int main (int argc, char *argv[])
+{
+    m65_startup ("wolf.ovl");
+    __set_heap_limit (__get_heap_max_safe_size ());  // (llvm-mos starts small)
+    return wolf_main (argc, argv);
+}
+
+static int wolf_main (int argc, char *argv[])
+#else
+int main (int argc, char *argv[])
+#endif
 {
 #if defined(_arch_dreamcast)
     DC_Init();

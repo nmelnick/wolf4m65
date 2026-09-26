@@ -10,6 +10,7 @@ int tail(int x);
 int deep(int n);
 int deep2(int n);
 int ov2_f(int x);
+int via_inner(int x);
 int res_helper(int x);          // resident, in main.c
 
 #endif

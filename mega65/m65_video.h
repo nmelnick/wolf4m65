@@ -16,6 +16,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define M65_SCREEN_W   320
 #define M65_SCREEN_H   200
 #define M65_CELLS_X    (M65_SCREEN_W / 8)
@@ -51,5 +55,9 @@ void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dsts
 // Copy one linear scanline (width <= 320, x a multiple of 8) from normal
 // memory into the tiled framebuffer.
 void m65_put_scanline(unsigned x, unsigned y, const uint8_t *src, unsigned width);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

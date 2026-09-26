@@ -13,7 +13,9 @@
 
 #include <stdint.h>
 
+#include "m65_debug.h"
 #include "m65_platform.h"
+#include "ovl/ovl_load.h"
 #include "m65_video.h"
 
 extern char __rodata_start[], __rodata_load_start[], __rodata_size[];
@@ -57,4 +59,19 @@ void m65_takeover(void)
     if ((uint16_t)(uintptr_t)__highbss_size)
         m65_dma_fill((uint32_t)(uintptr_t)__highbss_start, 0,
                      (uint16_t)(uintptr_t)__highbss_size);
+}
+
+void m65_startup(const char *ovlfile)
+{
+    int rc;
+
+    m65_takeover();
+
+    rc = ovl_load(ovlfile);
+    if (rc != 0) {
+        m65_debug_puts("m65_startup: cannot load the code overlays:");
+        m65_debug_puts(ovlfile);
+        for (;;)
+            *(volatile uint8_t *)0xD020 = 2;
+    }
 }

@@ -9,6 +9,17 @@
 
 #include "m65_far.h"      // farptr, used in the game's headers under MEGA65
 
+// llvm-mos's <unistd.h> and <fcntl.h> have no extern "C" guards: include
+// them here, once, with C linkage (m65_posix.c implements them in C).
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <fcntl.h>
+#include <unistd.h>
+#ifdef __cplusplus
+}
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -4,8 +4,8 @@ import struct
 import sys
 
 mem = open(sys.argv[1], "rb").read()
-fmt = "<BbHHHHHHiHBBHH"
-magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur, layout_ok, rodata_at, objlist_at = \
+fmt = "<BbHHHHHHiHBBHHH"
+magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur, layout_ok, rodata_at, objlist_at, inner20 = \
     struct.unpack(fmt, mem[0x50000:0x50000 + struct.calcsize(fmt)])
 
 checks = [
@@ -20,6 +20,7 @@ checks = [
     ("tail(4) == 12            (tail call)", tail4 == 12),
     ("deep(6) == 6             (ping-pong between overlays)", deep6 == 6),
     ("add3(10,20,30) == 60     (still fine afterwards)", after == 60),
+    ("via_inner(20) == 42      (direct call to a thunk-less function)", inner20 == 42),
 ]
 bad = 0
 for name, ok in checks:
