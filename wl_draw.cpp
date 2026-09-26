@@ -359,15 +359,23 @@ void ScalePost()
     yend = viewheight / 2 + ywcount - 1;
     yw=TEXTURESIZE-1;
 
-    while(yend >= viewheight)
+    // Rows below the view (a close wall): the original steps through them
+    // one by one (hundreds for a close wall), taking TEXTURESIZE/2 from
+    // ywcount a row and adding yd (a texel up) whenever it is not positive.
+    // ywcount starts at yd and stays in (0, yd], so over k rows, with
+    // d = k * TEXTURESIZE/2 - ywcount: no texel if d < 0, else d / yd + 1
+    // texels, leaving yd - d % yd. The same result, with one division.
+    if(yend >= viewheight)
     {
-        ywcount -= TEXTURESIZE/2;
-        while(ywcount <= 0)
+        int32_t d = (int32_t) (yend - viewheight + 1) * (TEXTURESIZE/2) - ywcount;
+        if(d < 0)
+            ywcount = (int) -d;
+        else
         {
-            ywcount += yd;
-            yw--;
+            yw -= (int) (d / yd) + 1;
+            ywcount = yd - (int) (d % yd);
         }
-        yend--;
+        yend = viewheight - 1;
     }
     if(yw < 0 || yend < ytop) return;
 
