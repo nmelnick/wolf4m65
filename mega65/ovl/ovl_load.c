@@ -4,9 +4,9 @@
 #include "ovl_load.h"
 
 #define OVL_ATTIC 0x8100000UL        // MB $81; keep in step with ovl_rt.s
-#define OVL_SLOT  0x4000UL
 
 extern const uint8_t __ovl_count;    // generated (ovl_thunks.s)
+extern const uint16_t __ovl_slot;    // bytes per overlay (the window size)
 void __ovl_setmb(void);              // ovl_rt.s
 
 int ovl_load(const char *filename)
@@ -23,7 +23,7 @@ int ovl_load(const char *filename)
         return -2;
 
     for (k = 0; k < __ovl_count; k++) {
-        if (m65_dos_read(fd, OVL_ATTIC + k * OVL_SLOT, OVL_SLOT) != OVL_SLOT) {
+        if (m65_dos_read(fd, OVL_ATTIC + (uint32_t)k * __ovl_slot, __ovl_slot) != __ovl_slot) {
             m65_dos_close(fd);
             return -3;
         }

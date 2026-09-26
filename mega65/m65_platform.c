@@ -61,6 +61,10 @@ void m65_takeover(void)
     __asm__ volatile("lda #0\n ldx #0\n ldy #0\n ldz #0\n map\n eom\n" ::: "a", "x", "y");
     *(volatile uint8_t *)0x0001 = 0x35;
 
+    // Full speed (40MHz): 65 to the CPU port's $00 (user guide,
+    // appendix-dmagic.tex: "LDA #65 ; Set CPU speed to fast / STA 0").
+    *(volatile uint8_t *)0x0000 = 65;
+
     *(volatile uint16_t *)0xFFFA = (uint16_t)(uintptr_t)m65_nmi;
     *(volatile uint16_t *)0xFFFC = (uint16_t)(uintptr_t)m65_irq;
     *(volatile uint16_t *)0xFFFE = (uint16_t)(uintptr_t)m65_irq;

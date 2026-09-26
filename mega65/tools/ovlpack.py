@@ -3,7 +3,7 @@
 
 usage: ovlpack.py PROGRAM.elf COUNT OUT.OVL [SLOT_SIZE]
 
-Image k (1..COUNT) is padded to SLOT_SIZE (default 16KB) and stored at file
+Image k (1..COUNT) is padded to SLOT_SIZE (default 8KB, the window size) and stored at file
 offset (k-1)*SLOT_SIZE, which is where the loader puts it in attic RAM.
 """
 import os
@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 elf, count, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
-slot = int(sys.argv[4], 0) if len(sys.argv) > 4 else 0x4000
+slot = int(sys.argv[4], 0) if len(sys.argv) > 4 else 0x2000
 objcopy = os.path.expanduser("~/opt/llvm-mos/bin/llvm-objcopy")
 
 with tempfile.TemporaryDirectory() as tmp, open(out, "wb") as f:

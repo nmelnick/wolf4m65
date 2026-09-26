@@ -291,6 +291,34 @@ run-wolf: wolf.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
 	@tr -d '\r' < wolf.ser | tail -20
 
+# --- For the real machine --------------------------------------------------
+# build/sdcard/: everything that goes in the root directory of the MEGA65's
+# SD card: WOLF3D.D81 (a disk image holding the program, WOLF) and the files
+# the game loads itself (see README.md).
+SDCARD = build/sdcard
+sdcard: wolf.prg $(PORTDATA)
+	rm -rf $(SDCARD)
+	mkdir -p $(SDCARD)
+	cp $(GB)/WOLF.OVL $(GB)/WOLF.DAT $(PORTDATA) $(GAMEDATA) $(SDCARD)/
+	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF3D.D81 -write wolf.prg wolf
+	@echo; echo "Copy everything in $(SDCARD)/ to the SD card's root directory."; ls -l $(SDCARD)
+
+# build/wolf3d-mega65.zip: the same without the game data (*.WL1), for
+# passing around: whoever installs it adds their own copy of the data.
+dist: sdcard
+	rm -f build/wolf3d-mega65.zip
+	cd $(SDCARD) && zip -q ../wolf3d-mega65.zip WOLF3D.D81 WOLF.OVL WOLF.DAT SIGNON.BIN TABLES.BIN
+	cp README.md build/README-mega65.md && cd build && zip -q wolf3d-mega65.zip README-mega65.md
+	@ls -l build/wolf3d-mega65.zip
+
+# Speed: run the first demo for RUNSECS and show the frame times it reports
+# (m65_test.c). Emulated time, so the host's speed does not matter; Xemu's
+# timing is close to, but not exactly, the real machine's.
+fps: KEYS = {6000,0x3C},{6300,0x7F}
+fps: RUNSECS = 150
+fps: run-wolf
+	@tr -d '\r' < wolf.ser | grep -a '^FPS' || true
+
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
 run-xemu: wolf.prg $(SDIMG)
@@ -354,4 +382,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

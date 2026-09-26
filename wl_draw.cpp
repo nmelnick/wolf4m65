@@ -37,7 +37,11 @@ unsigned vbufPitch = 0;
 
 int32_t    lasttimecount;
 int32_t    frameon;
+#ifdef MEGA65
+boolean fpscounter = true;      // (for now: to see the speed on the hardware)
+#else
 boolean fpscounter;
+#endif
 
 int fps_frames=0, fps_time=0, fps=0;
 
