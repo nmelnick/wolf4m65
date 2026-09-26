@@ -71,6 +71,23 @@ void surf_fill_rect(const SDL_Surface *s, unsigned x, unsigned y,
         m65_dma_fill(s->farpixels + 32000, color, 32000);
         return;
     }
+    if (s->tiled) {
+        // Column-major cells: rows y..y+h-1 of one 8-pixel strip are one
+        // contiguous block, and a single pixel column is every 8th byte.
+        while (w) {
+            unsigned r = 8 - (x & 7);
+            if (r > w) r = w;
+            if (r == 8)
+                m65_dma_fill(surf_addr(s, x, y), color, (uint16_t)(h << 3));
+            else {
+                unsigned i;
+                for (i = 0; i < r; i++)
+                    m65_dma_fill_skip(surf_addr(s, x + i, y), color, h, M65_COLUMN_STEP);
+            }
+            x += r; w -= r;
+        }
+        return;
+    }
     while (h--)
         surf_fill_row(s, x, y++, w, color);
 }

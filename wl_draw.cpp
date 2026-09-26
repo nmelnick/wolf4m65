@@ -1,6 +1,10 @@
 // WL_DRAW.C
 
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_surf.h"
+#include "m65_video.h"
+#endif
 #pragma hdrstop
 
 #include "wl_cloudsky.h"
@@ -271,9 +275,90 @@ int CalcHeight()
 ===================
 */
 
+#ifdef MEGA65
+// The texture column is in far memory (VSWAP in attic RAM).
+farptr postsource;
+#define POSTSOURCE_ADD(p, n) FAR_ADD(p, n)
+#else
 byte *postsource;
+#define POSTSOURCE_ADD(p, n) ((p) + (n))
+#endif
 int postx;
 int postwidth;
+
+#ifdef MEGA65
+
+//
+// Far address of pixel (x, y) of the 3D view in screenBuffer.
+//
+static inline uint32_t ViewAddr (int x, int y)
+{
+    return surf_addr(screenBuffer, viewscreenx + x, viewscreeny + y);
+}
+
+//
+// The same scaling as below, on row indices rather than row*pitch offsets
+// (which overflow a 16-bit int for close walls): the texture column is
+// fetched with one DMA job, the column is built in a near buffer, and the
+// rows drawn are written to the screen with one DMA job (the framebuffer's
+// columns are every 8th byte).
+//
+void ScalePost()
+{
+    static byte tex[TEXTURESIZE];
+    static byte colbuf[M65_SCREEN_H];
+    int ywcount, ytop, yw, yd, y, yend;
+    byte col;
+
+    ywcount = yd = wallheight[postx] >> 3;
+    if(yd <= 0) yd = 100;
+
+    ytop = viewheight / 2 - ywcount;
+    if(ytop < 0) ytop = 0;
+
+    yend = viewheight / 2 + ywcount - 1;
+    yw=TEXTURESIZE-1;
+
+    while(yend >= viewheight)
+    {
+        ywcount -= TEXTURESIZE/2;
+        while(ywcount <= 0)
+        {
+            ywcount += yd;
+            yw--;
+        }
+        yend--;
+    }
+    if(yw < 0) return;
+
+    far_read(tex, postsource, TEXTURESIZE);
+
+    col = tex[yw];
+    y = yend;
+    while(ytop <= y)
+    {
+        colbuf[y] = col;
+        ywcount -= TEXTURESIZE/2;
+        if(ywcount <= 0)
+        {
+            do
+            {
+                ywcount += yd;
+                yw--;
+            }
+            while(ywcount <= 0);
+            if(yw < 0) break;           // (row y was drawn)
+            col = tex[yw];
+        }
+        y--;
+    }
+    if(y < ytop) y = ytop;              // rows y..yend were drawn
+
+    m65_dma_copy_skip(ViewAddr(postx, y), (uint32_t)(uintptr_t)&colbuf[y],
+                      yend - y + 1, M65_COLUMN_STEP);
+}
+
+#else
 
 void ScalePost()
 {
@@ -342,6 +427,8 @@ void GlobalScalePost(byte *vidbuf, unsigned pitch)
     ScalePost();
 }
 
+#endif // MEGA65
+
 /*
 ====================
 =
@@ -376,7 +463,7 @@ void HitVertWall (void)
         }
         ScalePost();
         wallheight[pixx] = CalcHeight();
-        postsource+=texture-lasttexture;
+        postsource=POSTSOURCE_ADD(postsource,texture-lasttexture);
         postwidth=1;
         postx=pixx;
         lasttexture=texture;
@@ -404,7 +491,7 @@ void HitVertWall (void)
     else
         wallpic = vertwall[tilehit];
 
-    postsource = PM_GetTexture(wallpic) + texture;
+    postsource = POSTSOURCE_ADD(PM_GetTexture(wallpic), texture);
 }
 
 
@@ -441,7 +528,7 @@ void HitHorizWall (void)
         }
         ScalePost();
         wallheight[pixx] = CalcHeight();
-        postsource+=texture-lasttexture;
+        postsource=POSTSOURCE_ADD(postsource,texture-lasttexture);
         postwidth=1;
         postx=pixx;
         lasttexture=texture;
@@ -469,7 +556,7 @@ void HitHorizWall (void)
     else
         wallpic = horizwall[tilehit];
 
-    postsource = PM_GetTexture(wallpic) + texture;
+    postsource = POSTSOURCE_ADD(PM_GetTexture(wallpic), texture);
 }
 
 //==========================================================================
@@ -502,7 +589,7 @@ void HitHorizDoor (void)
         }
         ScalePost();
         wallheight[pixx] = CalcHeight();
-        postsource+=texture-lasttexture;
+        postsource=POSTSOURCE_ADD(postsource,texture-lasttexture);
         postwidth=1;
         postx=pixx;
         lasttexture=texture;
@@ -534,7 +621,7 @@ void HitHorizDoor (void)
             break;
     }
 
-    postsource = PM_GetTexture(doorpage) + texture;
+    postsource = POSTSOURCE_ADD(PM_GetTexture(doorpage), texture);
 }
 
 //==========================================================================
@@ -567,7 +654,7 @@ void HitVertDoor (void)
         }
         ScalePost();
         wallheight[pixx] = CalcHeight();
-        postsource+=texture-lasttexture;
+        postsource=POSTSOURCE_ADD(postsource,texture-lasttexture);
         postwidth=1;
         postx=pixx;
         lasttexture=texture;
@@ -599,7 +686,7 @@ void HitVertDoor (void)
             break;
     }
 
-    postsource = PM_GetTexture(doorpage) + texture;
+    postsource = POSTSOURCE_ADD(PM_GetTexture(doorpage), texture);
 }
 
 //==========================================================================
@@ -637,6 +724,11 @@ void VGAClearScreen (void)
 {
     byte ceiling=vgaCeiling[gamestate.episode*10+mapon];
 
+#ifdef MEGA65
+    surf_fill_rect(screenBuffer, viewscreenx, viewscreeny, viewwidth, viewheight / 2, ceiling);
+    surf_fill_rect(screenBuffer, viewscreenx, viewscreeny + viewheight / 2,
+                   viewwidth, viewheight - viewheight / 2, 0x19);
+#else
     int y;
     byte *ptr = vbuf;
 #ifdef USE_SHADING
@@ -649,6 +741,7 @@ void VGAClearScreen (void)
         memset(ptr, ceiling, viewwidth);
     for(; y < viewheight; y++, ptr += vbufPitch)
         memset(ptr, 0x19, viewwidth);
+#endif
 #endif
 }
 
@@ -687,6 +780,101 @@ int CalcRotate (objtype *ob)
 
     return angle/(ANGLES/8);
 }
+
+#ifdef MEGA65
+
+//
+// ScaleShape and SimpleScaleShape on the MEGA65: the sprite (a t_compshape:
+// leftpix, rightpix, dataofs[], then posts and texels) is read in place from
+// far memory, and every vertical span is one DMA fill (the framebuffer's
+// columns are every 8th byte). The control flow is the original's; pixcnt
+// and ycnt are 32-bit, since i * pixheight overflows a 16-bit int for close
+// sprites.
+//
+static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
+                           unsigned height, bool clipwalls)
+{
+    farptr shape = PM_GetSprite(shapenum);
+    farptr cmdptr, cline, line;
+    uint32_t pixheight;
+    int32_t pixcnt, ycnt;
+    unsigned starty, endy, j, leftpix, rightpix;
+    int actx, i, upperedge;
+    int16_t newstart;
+    int scrstarty, screndy, lpix, rpix;
+    byte col;
+
+    pixheight = (uint32_t) scale * SPRITESCALEFACTOR;
+    actx = xcenter - scale;
+    upperedge = viewheight / 2 - scale;
+
+    leftpix = far_peekw(shape);
+    rightpix = far_peekw(FAR_ADD(shape, 2));
+    cmdptr = FAR_ADD(shape, 4);                     // dataofs[0]
+
+    for(i=leftpix,pixcnt=(int32_t)i*pixheight,rpix=(pixcnt>>6)+actx;i<=(int)rightpix;i++,cmdptr=FAR_ADD(cmdptr,2))
+    {
+        lpix=rpix;
+        if(lpix>=viewwidth) break;
+        pixcnt+=pixheight;
+        rpix=(pixcnt>>6)+actx;
+        if(lpix!=rpix && rpix>0)
+        {
+            if(lpix<0) lpix=0;
+            if(rpix>viewwidth) rpix=viewwidth,i=rightpix+1;
+            cline = FAR_ADD(shape, far_peekw(cmdptr));
+            while(lpix<rpix)
+            {
+                if(!clipwalls || wallheight[lpix]<=(int)height)
+                {
+                    line=cline;
+                    while((endy = far_peekw(line)) != 0)
+                    {
+                        endy >>= 1;
+                        newstart = (int16_t) far_peekw(FAR_ADD(line, 2));
+                        starty = far_peekw(FAR_ADD(line, 4)) >> 1;
+                        line = FAR_ADD(line, 6);
+                        j=starty;
+                        ycnt=(int32_t)j*pixheight;
+                        screndy=(int)(ycnt>>6)+upperedge;
+                        for(;j<endy;j++)
+                        {
+                            scrstarty=screndy;
+                            ycnt+=pixheight;
+                            screndy=(int)(ycnt>>6)+upperedge;
+                            if(scrstarty!=screndy && screndy>0)
+                            {
+                                col=far_peek(FAR_ADD(shape, (int32_t)newstart+j));
+                                if(scrstarty<0) scrstarty=0;
+                                if(screndy>viewheight) screndy=viewheight,j=endy;
+
+                                if(scrstarty<screndy)
+                                    m65_dma_fill_skip(ViewAddr(lpix, scrstarty), col,
+                                                      screndy-scrstarty, M65_COLUMN_STEP);
+                            }
+                        }
+                    }
+                }
+                lpix++;
+            }
+        }
+    }
+}
+
+void ScaleShape (int xcenter, int shapenum, unsigned height, uint32_t flags)
+{
+    unsigned scale=height>>3;       // low three bits are fractional
+    (void) flags;
+    if(!scale) return;              // too close or far away
+    ScaleShapeFar(xcenter, shapenum, scale, height, true);
+}
+
+void SimpleScaleShape (int xcenter, int shapenum, unsigned height)
+{
+    ScaleShapeFar(xcenter, shapenum, height>>1, height, false);
+}
+
+#else
 
 void ScaleShape (int xcenter, int shapenum, unsigned height, uint32_t flags)
 {
@@ -852,6 +1040,8 @@ void SimpleScaleShape (int xcenter, int shapenum, unsigned height)
         }
     }
 }
+
+#endif // MEGA65
 
 /*
 =====================
@@ -1551,11 +1741,13 @@ void    ThreeDRefresh (void)
     memset(spotvis,0,maparea);
     spotvis[player->tilex][player->tiley] = 1;       // Detect all sprites over player fix
 
+#ifndef MEGA65       // (the MEGA65 renderer addresses screenBuffer directly)
     vbuf = VL_LockSurface(screenBuffer);
     if(vbuf == NULL) return;
 
     vbuf += screenofs;
     vbufPitch = bufferPitch;
+#endif
 
     CalcViewVariables();
 
@@ -1601,8 +1793,10 @@ void    ThreeDRefresh (void)
     if(Keyboard[sc_Tab] && viewsize == 21 && gamestate.weapon != -1)
         ShowActStatus();
 
+#ifndef MEGA65
     VL_UnlockSurface(screenBuffer);
     vbuf = NULL;
+#endif
 
 //
 // show screen and time last cycle
