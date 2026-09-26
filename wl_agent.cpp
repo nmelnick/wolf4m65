@@ -700,7 +700,7 @@ void GiveKey (int key)
 =
 ===================
 */
-void GetBonus (statobj_t *check)
+void GetBonus (statobjptr check)
 {
     switch (check->itemnumber)
     {

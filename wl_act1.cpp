@@ -12,8 +12,12 @@
 */
 
 
+#ifdef MEGA65
+FarStructArray<statobj_t, MAXSTATS> statobjlist;   // storage: CAL_SetupMapFile
+#else
 statobj_t       statobjlist[MAXSTATS];
-statobj_t       *laststatobj;
+#endif
+statobjptr      laststatobj;
 
 
 struct
@@ -209,7 +213,7 @@ void SpawnStatic (int tilex, int tiley, int type)
 void PlaceItemType (int itemtype, int tilex, int tiley)
 {
     int type;
-    statobj_t *spot;
+    statobjptr spot;
 
     //
     // find the item number

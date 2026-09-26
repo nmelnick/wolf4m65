@@ -10,6 +10,7 @@
 #include "m65_farword.hpp"
 #include "m65_fargrid.hpp"
 #include "m65_fararray.hpp"
+#include "m65_farstruct.hpp"
 #include "m65_video.h"
 
 #define N 8                         // grid size (the game's is 64)
@@ -187,6 +188,58 @@ int main (void)
                 check(fg[x][y] == ng[x][y], 57);                   // whole grid agrees
         fg.clear();
         check(fg[5][6] == 0, 58);
+    }
+
+    // --- FarStructArray / FarStructPtr (statobjlist) ------------------------------------
+    {
+        struct st { uint8_t tx, ty; int16_t shape; uint16_t vis; uint32_t flags; uint8_t item; };
+        static FarStructArray<st, 10> fa;
+        static st na[10];
+        FarStructPtr<st> flast, fp3;
+        st *nlast, *np3;
+        farptr storage = far_alloc_chip(fa.bytes());
+
+        fa.init(storage);
+        memset(na, 0, sizeof na);
+        flast = &fa[0]; nlast = &na[0];                         // InitStaticList
+        for (i = 0; i < 6; i++) {                               // SpawnStatic
+            flast->shape = (int16_t) (100 + i); nlast->shape = (int16_t) (100 + i);
+            flast->tx = (uint8_t) i; nlast->tx = (uint8_t) i;
+            flast->flags = 0x10; nlast->flags = 0x10;
+            flast->flags |= 0x3000; nlast->flags |= 0x3000;     // |= through ->
+            flast++; nlast++;
+        }
+        check(flast - &fa[0] == 6 && flast != &fa[10] && !(flast == &fa[10]), 60);
+        {
+            FarStructPtr<st> p;                                 // DrawScaleds loop
+            int k = 0, sum = 0;
+            for (p = &fa[0]; p != flast; p++, k++) {
+                if (p->shape == -1) continue;
+                sum += p->shape + p->tx;
+                if (p->flags & 0x10 && p->tx == 2)
+                    p->shape = -1;                              // GetBonus-like
+            }
+            check(k == 6 && sum == (100+101+102+103+104+105) + (0+1+2+3+4+5), 61);
+            na[2].shape = -1;
+        }
+        fp3 = fa + 3; np3 = na + 3;                             // array + i
+        fp3->item = 9; np3->item = 9;
+        (&fa[5])->ty = 7; na[5].ty = 7;                         // evicts element 3
+        {
+            st raw;                                             // write-back reached far memory
+            far_read(&raw, FAR_ADD(storage, 3 * sizeof(st)), sizeof raw);
+            check(raw.item == 9 && raw.shape == 103, 62);
+        }
+        {
+            st copy = *(fa + 2);                                // savegame: nullstat = *(p)
+            check(copy.shape == -1 && copy.flags == 0x3010, 63);
+            copy.shape = 55;
+            *(fa + 8) = copy;                                   // *(p) = nullstat
+            check((&fa[8])->shape == 55 && (&fa[2])->shape == -1, 64);
+        }
+        for (i = 0; i < 6; i++)                                 // whole array agrees
+            check((&fa[i])->shape == na[i].shape && (&fa[i])->ty == na[i].ty &&
+                  (&fa[i])->item == na[i].item && (&fa[i])->flags == na[i].flags, 65);
     }
 
     struct { uint8_t magic; uint8_t firstfail; uint16_t fails, checks; } rep =

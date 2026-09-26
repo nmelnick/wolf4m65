@@ -17,6 +17,7 @@ extern int    numEpisodesMissing;
 FarPtrGrid<objtype, MAPSIZE> actorat;     // (defined in wl_play.cpp in the game)
 FarByteGrid<0, MAPSIZE> tilemap;
 FarByteGrid<1, MAPSIZE> spotvis;
+FarStructArray<statobj_t, MAXSTATS> statobjlist;
 
 // (Arguments are not printed.)
 void Quit (const char *error, ...)

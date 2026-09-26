@@ -79,13 +79,17 @@ void CountObjects (void)
     US_PrintUnsigned (total);
 
     char str[60];
+#ifdef MEGA65
+    sprintf(str,"\nlaststatobj=%d",(int)(laststatobj-&statobjlist[0]));
+#else
     sprintf(str,"\nlaststatobj=%.8X",(int32_t)(uintptr_t)laststatobj);
+#endif
     US_Print(str);
 
     US_Print ("\nIn use statics:");
     for (i=0;i<total;i++)
     {
-        if (statobjlist[i].shapenum != -1)
+        if ((&statobjlist[i])->shapenum != -1)
             count++;
         else
             doors++;        //debug

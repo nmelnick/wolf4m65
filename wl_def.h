@@ -761,6 +761,15 @@ typedef struct statstruct
     byte      itemnumber;
 } statobj_t;
 
+#ifdef MEGA65
+// statobjlist is in far (chip) memory; statobjptr behaves like statobj_t *
+// (see m65_farstruct.hpp).
+#include "m65_farstruct.hpp"
+typedef FarStructPtr<statobj_t> statobjptr;
+#else
+typedef statobj_t *statobjptr;
+#endif
+
 
 //---------------------
 //
@@ -1054,8 +1063,12 @@ extern  objtype     objlist[MAXACTORS];
 extern  boolean     buttonheld[NUMBUTTONS];
 extern  exit_t      playstate;
 extern  boolean     madenoise;
+#ifdef MEGA65
+extern  FarStructArray<statobj_t, MAXSTATS> statobjlist;
+#else
 extern  statobj_t   statobjlist[MAXSTATS];
-extern  statobj_t   *laststatobj;
+#endif
+extern  statobjptr  laststatobj;
 extern  objtype     *newobj,*killerobj;
 extern  doorobj_t   doorobjlist[MAXDOORS];
 extern  doorobj_t   *lastdoorobj;
@@ -1225,7 +1238,7 @@ void    Thrust (int angle, int32_t speed);
 void    SpawnPlayer (int tilex, int tiley, int dir);
 void    TakeDamage (int points,objtype *attacker);
 void    GivePoints (int32_t points);
-void    GetBonus (statobj_t *check);
+void    GetBonus (statobjptr check);
 void    GiveWeapon (int weapon);
 void    GiveAmmo (int ammo);
 void    GiveKey (int key);

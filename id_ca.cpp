@@ -692,6 +692,11 @@ void CAL_SetupMapFile (void)
         actorat.init(grid);
         tilemap.init(tiles);
         spotvis.init(vis);
+
+        farptr stats = far_alloc_chip(statobjlist.bytes());
+        if (FAR_ISNULL(stats))
+            Quit("Out of chip far memory");
+        statobjlist.init(stats);
     }
 #endif
 }

@@ -1075,7 +1075,7 @@ typedef struct
     short      flags;          // this must be changed to uint32_t, when you
                                // you need more than 16-flags for drawing
 #ifdef USE_DIR3DSPR
-    statobj_t *transsprite;
+    statobjptr transsprite;
 #endif
 } visobj_t;
 
@@ -1093,7 +1093,7 @@ void DrawScaleds (void)
 #endif
     unsigned spotloc;
 
-    statobj_t *statptr;
+    statobjptr statptr;
     objtype   *obj;
 
     visptr = &vislist[0];

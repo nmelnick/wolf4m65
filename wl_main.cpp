@@ -445,7 +445,11 @@ boolean SaveTheGame(FILE *file,int x,int y)
             sizeof(actorat) +
 #endif
             sizeof(laststatobj) +
+#ifdef MEGA65
+            statobjlist.bytes() +
+#else
             sizeof(statobjlist) +
+#endif
             sizeof(doorposition) +
             sizeof(pwallstate) +
             sizeof(pwalltile) +
@@ -520,14 +524,18 @@ boolean SaveTheGame(FILE *file,int x,int y)
     fwrite(&nullobj,sizeof(nullobj),1,file);
 
     DiskFlopAnim(x,y);
-    word laststatobjnum=(word) (laststatobj-statobjlist);
+    word laststatobjnum=(word) (laststatobj-&statobjlist[0]);
     fwrite(&laststatobjnum,sizeof(laststatobjnum),1,file);
     checksum = DoChecksum((byte *)&laststatobjnum,sizeof(laststatobjnum),checksum);
 
     DiskFlopAnim(x,y);
     for(i=0;i<MAXSTATS;i++)
     {
+#ifdef MEGA65
+        nullstat = *(statobjlist+i);
+#else
         memcpy(&nullstat,statobjlist+i,sizeof(nullstat));
+#endif
 #ifndef MEGA65       // (on the MEGA65 visspot already is an offset into spotvis)
         nullstat.visspot=(byte *) ((uintptr_t) nullstat.visspot-(uintptr_t)spotvis);
 #endif
@@ -653,7 +661,11 @@ boolean LoadTheGame(FILE *file,int x,int y)
 #ifndef MEGA65
         nullstat.visspot=(byte *) ((uintptr_t)nullstat.visspot+(uintptr_t)spotvis);
 #endif
+#ifdef MEGA65
+        *(statobjlist+i) = nullstat;
+#else
         memcpy(statobjlist+i,&nullstat,sizeof(nullstat));
+#endif
     }
 
     DiskFlopAnim(x,y);
