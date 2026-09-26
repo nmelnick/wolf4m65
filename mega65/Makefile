@@ -297,6 +297,13 @@ run-xemu: wolf.prg $(SDIMG)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
 	$(XEMU) -sdimg $(SDIMG) -prg wolf.prg
 
+# --- Music preview -------------------------------------------------------------
+# The game's AdLib music as 3-SID PSID files (build/sid/*.sid; play them with
+# VICE's vsid). See tools/imf2sid.py. SIDMODEL=6581 for the older chip.
+SIDMODEL ?= 8580
+sid: tools/imf2sid.py
+	python3 tools/imf2sid.py --model $(SIDMODEL) $(WOLFDIR)/AUDIOHED.WL1 $(WOLFDIR)/AUDIOT.WL1 build/sid
+
 # --- Host reference ---------------------------------------------------------
 # The original game code (no MEGA65 changes) built for the host against a
 # RAM-only SDL (host/host_sdl.cpp): silent, invisible, with a virtual clock.
@@ -341,4 +348,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
