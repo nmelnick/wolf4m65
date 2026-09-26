@@ -39,11 +39,17 @@ static void dma_run(uint8_t cmd, uint32_t dst, uint32_t src, uint16_t count)
     job.list.command_msb = 0;
     job.list.modulo      = 0;
 
+    // The DMA engine reads `job` and writes memory behind the compiler's back:
+    // barriers stop it from dropping or reordering the list stores (which it
+    // did once LTO inlined two back-to-back copies), and from assuming the
+    // destination still holds what it held before.
+    __asm__ volatile("" ::: "memory");
     DMA.enable_f018b = 1;
     DMA.addr_mb   = 0;
     DMA.addr_bank = 0;
     DMA.addr_msb  = (uint8_t)((uint16_t)&job >> 8);
     DMA.trigger_enhanced = (uint8_t)((uint16_t)&job & 0xff);
+    __asm__ volatile("" ::: "memory");
 }
 
 void m65_dma_fill(uint32_t dst, uint8_t value, uint16_t count)

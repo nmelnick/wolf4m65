@@ -40,18 +40,6 @@ __ovl_sx:	.zero	1
 	.globl	__ovl_cur
 __ovl_cur:	.zero	1
 
-; Startup: clear the memory map before the C runtime initialises .data and
-; .bss (.init.200), so that they are set up in the RAM we keep using. Runs
-; after unmap-basic (.init.010). The KERNAL stays visible: ROM banking is done
-; by $01/$D030, and only blocks MAPped over $E000 would hide it.
-	.section	.init.020,"ax",@progbits
-	lda	#$00
-	ldx	#$00
-	ldy	#$00
-	ldz	#$00
-	map
-	eom
-
 	.section	.text.__ovl_map,"ax",@progbits
 ; A = overlay id -> map it into the window. Clobbers A, X, Y.
 	.globl	__ovl_map
@@ -66,10 +54,14 @@ __ovl_map:
 	eom
 	rts
 
-; Select attic megabyte $81 for the lower region. A megabyte select keeps the
-; region's current offset and block mask, so the mapping must be clear first
-; (it is, since .init.020, but be safe), or the blocks it has mapped move into
-; attic RAM with it.
+; Take over the memory map: clear both regions, then select attic megabyte $81
+; for the lower region. A megabyte select keeps the region's current offset
+; and block mask, so the clear must come first, or the blocks the system has
+; mapped (which include our code) move into attic RAM with it.
+;
+; The clear also unmaps the KERNAL at $E000 (verified in Xemu), so no KERNAL
+; call may follow. That is why this is not done in the startup code: the
+; llvm-mos C runtime itself calls CHROUT ($FFD2) just before main.
 	.section	.text.__ovl_setmb,"ax",@progbits
 	.globl	__ovl_setmb
 __ovl_setmb:

@@ -40,7 +40,7 @@ static struct hres hcall(uint8_t fn, uint8_t x, uint8_t y)
         "1:\n"
         : "+a"(a), "+x"(x), "+y"(y), [ok] "+r"(ok)
         :
-        : "c", "v");
+        : "c", "v", "memory");   // Hyppo reads/writes memory (e.g. namebuf)
 
     r.a = a; r.x = x; r.y = y; r.ok = ok;
     return r;
