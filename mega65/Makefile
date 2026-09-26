@@ -85,6 +85,19 @@ test-ovl: ovltest.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg ovltest.prg -dumpmem ovltest.mem
 	python3 tools/check_ovltest.py ovltest.mem
 
+# --- Equivalence tests for changes to the game code --------------------------
+# Old code (from git) against new, run in the llvm-mos simulator (16-bit int).
+
+build/hosttest/shifttest.cpp: tools/make_shifttest.py $(WOLFDIR)/wl_play.cpp
+	@mkdir -p build/hosttest
+	python3 tools/make_shifttest.py > $@
+
+build/hosttest/%.sim: build/hosttest/%.cpp
+	mos-sim-clang++ -Os -I$(WOLFDIR) -o $@ $<
+
+test-host: build/hosttest/shifttest.sim
+	mos-sim build/hosttest/shifttest.sim
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -105,4 +118,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host

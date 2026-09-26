@@ -211,7 +211,7 @@ int songs[] = {
     XFUNKIE_MUS,
     XDEATH_MUS,
     XGETYOU_MUS,                // DON'T KNOW
-    ULTIMATE_MUS,               // Trans Gr”sse
+    ULTIMATE_MUS,               // Trans Grï¿½sse
 
     DUNGEON_MUS,
     GOINGAFT_MUS,
@@ -954,11 +954,57 @@ void ContinueMusic (int offs)
 #define WHITETICS       6
 
 
-SDL_Color redshifts[NUMREDSHIFTS][256];
-SDL_Color whiteshifts[NUMWHITESHIFTS][256];
+//
+// Only one shifted palette is shown at a time, so instead of precomputing
+// all of them (9KB) the current one is built on demand into shiftpal (1KB).
+// The arithmetic is the same as the original precomputed tables.
+//
+static SDL_Color shiftpal[256];
+static int shiftpalkind;        // 0 = none built, 1 = red, 2 = white
+static int shiftpalstep;
 
 int damagecount, bonuscount;
 boolean palshifted;
+
+static SDL_Color *BuildShift (int kind, int i)
+{
+    SDL_Color *workptr, *baseptr;
+    int j, delta;
+
+    if (kind == shiftpalkind && i == shiftpalstep)
+        return shiftpal;
+
+    workptr = shiftpal;
+    baseptr = gamepal;
+
+    for (j = 0; j <= 255; j++)
+    {
+        if (kind == 1)
+        {
+            delta = 256 - baseptr->r;
+            workptr->r = baseptr->r + delta * i / REDSTEPS;
+            delta = -baseptr->g;
+            workptr->g = baseptr->g + delta * i / REDSTEPS;
+            delta = -baseptr->b;
+            workptr->b = baseptr->b + delta * i / REDSTEPS;
+        }
+        else
+        {
+            delta = 256 - baseptr->r;
+            workptr->r = baseptr->r + delta * i / WHITESTEPS;
+            delta = 248 - baseptr->g;
+            workptr->g = baseptr->g + delta * i / WHITESTEPS;
+            delta = 0-baseptr->b;
+            workptr->b = baseptr->b + delta * i / WHITESTEPS;
+        }
+        baseptr++;
+        workptr++;
+    }
+
+    shiftpalkind = kind;
+    shiftpalstep = i;
+    return shiftpal;
+}
 
 /*
 =====================
@@ -970,48 +1016,7 @@ boolean palshifted;
 
 void InitRedShifts (void)
 {
-    SDL_Color *workptr, *baseptr;
-    int i, j, delta;
-
-
-//
-// fade through intermediate frames
-//
-    for (i = 1; i <= NUMREDSHIFTS; i++)
-    {
-        workptr = redshifts[i - 1];
-        baseptr = gamepal;
-
-        for (j = 0; j <= 255; j++)
-        {
-            delta = 256 - baseptr->r;
-            workptr->r = baseptr->r + delta * i / REDSTEPS;
-            delta = -baseptr->g;
-            workptr->g = baseptr->g + delta * i / REDSTEPS;
-            delta = -baseptr->b;
-            workptr->b = baseptr->b + delta * i / REDSTEPS;
-            baseptr++;
-            workptr++;
-        }
-    }
-
-    for (i = 1; i <= NUMWHITESHIFTS; i++)
-    {
-        workptr = whiteshifts[i - 1];
-        baseptr = gamepal;
-
-        for (j = 0; j <= 255; j++)
-        {
-            delta = 256 - baseptr->r;
-            workptr->r = baseptr->r + delta * i / WHITESTEPS;
-            delta = 248 - baseptr->g;
-            workptr->g = baseptr->g + delta * i / WHITESTEPS;
-            delta = 0-baseptr->b;
-            workptr->b = baseptr->b + delta * i / WHITESTEPS;
-            baseptr++;
-            workptr++;
-        }
-    }
+    shiftpalkind = 0;           // gamepal may have changed; rebuild on demand
 }
 
 
@@ -1098,12 +1103,12 @@ void UpdatePaletteShifts (void)
 
     if (red)
     {
-        VL_SetPalette (redshifts[red - 1], false);
+        VL_SetPalette (BuildShift (1, red), false);
         palshifted = true;
     }
     else if (white)
     {
-        VL_SetPalette (whiteshifts[white - 1], false);
+        VL_SetPalette (BuildShift (2, white), false);
         palshifted = true;
     }
     else if (palshifted)
