@@ -230,3 +230,7 @@ mega65/testsd/MEGA65.ROM
 mega65/*.log
 mega65/build/
 mega65/testsd/mega65.d81
+
+# Game data (not ours to distribute)
+*.WL1
+mega65/*.ser

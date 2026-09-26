@@ -40,18 +40,28 @@ size: wolf-objs
 XEMUDIR ?= $(HOME)/.local/share/xemu-lgb/mega65
 SDIMG    = build/sd.img
 
-$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*)
+GAMEDATA = $(wildcard $(WOLFDIR)/*.WL1)
+
+$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA)
 	@mkdir -p build
 	cp --sparse=always $< $@
 	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) s:
 
 dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
 	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c
 
+loadtest.prg: loadtest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
+	$(CC) $(CFLAGS) -o $@ loadtest.c m65_dos.c m65_video.c
+
+test-load: loadtest.prg $(SDIMG)
+	python3 tools/xrun.py 300 loadtest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg loadtest.prg -dumpmem loadtest.mem
+	python3 tools/check_loadtest.py loadtest.mem $(WOLFDIR)/VSWAP.WL1
+
 test-dos: dostest.prg $(SDIMG)
-	timeout 90 $(XEMU) $(XEMUFLAGS) -sdimg $(SDIMG) -prg dostest.prg \
-	  -dumpmem dostest.mem > dostest.log 2>&1 || true
+	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
 	python3 tools/check_dostest.py dostest.mem
 
 all: hello.prg vtest.prg
@@ -67,6 +77,6 @@ shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
 
 clean:
-	rm -f *.prg *.elf *.o *.png *.mem *.log; rm -rf obj build
+	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos
+.PHONY: all clean shot wolf-objs size test-dos test-load

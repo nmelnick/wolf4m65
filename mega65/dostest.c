@@ -1,6 +1,7 @@
 // File layer test: reads TEST.BIN from the SD card root into far memory, then
 // reports what happened in one block at $50000 for inspection with -dumpmem.
 #include <stdint.h>
+#include "m65_debug.h"
 #include "m65_dos.h"
 #include "m65_video.h"
 
@@ -28,5 +29,6 @@ int main(void)
     rep.magic    = 0xEE;
 
     m65_dma_copy(REPORT, (uint32_t)(uintptr_t)&rep, sizeof rep);
+    m65_debug_puts("TEST-DONE");
     for (;;) {}
 }
