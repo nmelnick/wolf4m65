@@ -417,6 +417,8 @@ IN_Startup(void)
     // I didn't find a way to ask libSDL whether a mouse is present, yet...
 #if defined(GP2X)
     MousePresent = false;
+#elif defined(MEGA65)
+    MousePresent = false;       // keyboard only for now (no joystick either)
 #elif defined(_arch_dreamcast)
     MousePresent = DC_MousePresent();
 #else
