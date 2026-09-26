@@ -365,7 +365,8 @@ void ScalePost()
     if(yend < ytop) return;
 
     step = (uint16_t) (((uint32_t) TEXTURESIZE / 2 << 8) / (uint16_t) yd);
-    first = ((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2)) / (uint16_t) yd;
+    first = ytop == walltop ? 0      // (not clipped at the top: most columns)
+          : ((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2)) / (uint16_t) yd;
     m65_dma_scale(ViewAddr(postx, ytop), postsource.a + first,
                   yend - ytop + 1, step, M65_COLUMN_STEP);
 }
