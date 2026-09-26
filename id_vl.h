@@ -78,6 +78,11 @@ void inline VL_MemToScreen (byte *source, int width, int height, int x, int y)
 
 void VL_MaskedToScreen (byte *source, int width, int height, int x, int y);
 
+#ifdef MEGA65
+// Draw a 320x200 planar picture (as stored for CA_CacheScreen) from far memory.
+void VL_FarPlanarToScreen (farptr pic);
+#endif
+
 void VL_LatchToScreenScaledCoord (SDL_Surface *source, int xsrc, int ysrc,
     int width, int height, int scxdest, int scydest);
 

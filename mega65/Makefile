@@ -112,6 +112,23 @@ test-huff: hufftest.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg hufftest.prg -dumpmem hufftest.mem
 	python3 tools/check_hufftest.py hufftest.mem build/huffref.h
 
+# --- Cache test: the real id_ca.cpp --------------------------------------------
+
+build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
+	@mkdir -p build
+	python3 tools/gen_mapref.py $@
+
+M65LIB = m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
+
+catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(M65LIB)
+	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(M65LIB)
+
+test-ca: catest.prg $(SDIMG)
+	python3 tools/xrun.py 600 catest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg catest.prg -dumpmem catest.mem
+	@tr -d '\r' < catest.ser | grep -a -A1 '^QUIT:' || true
+	python3 tools/check_catest.py catest.mem build/huffref.h build/mapref.h
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -132,4 +149,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca

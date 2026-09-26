@@ -25,6 +25,11 @@ loaded into the data segment
 #endif
 
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_huff.h"
+#include "m65_mapexp.h"
+#include "m65_posix.h"
+#endif
 #pragma hdrstop
 
 #define THREEBYTEGRSTARTS
@@ -58,15 +63,23 @@ typedef struct
 =============================================================================
 */
 
+#ifndef MEGA65       // (the MEGA65 decompresses straight from far memory)
 #define BUFFERSIZE 0x1000
 static int32_t bufferseg[BUFFERSIZE/4];
+#endif
 
 int     mapon;
 
 word    *mapsegs[MAPPLANES];
 static maptype* mapheaderseg[NUMMAPS];
+#ifdef MEGA65
+farptr  audiosegs[NUMSNDCHUNKS];
+farptr  grsegs[NUMCHUNKS];
+static farptr grfar, audiofar, mapfar;  // VGAGRAPH, AUDIOT, GAMEMAPS in attic
+#else
 byte    *audiosegs[NUMSNDCHUNKS];
 byte    *grsegs[NUMCHUNKS];
+#endif
 
 word    RLEWtag;
 
@@ -501,7 +514,8 @@ void CAL_SetupGrFile (void)
     const byte* d = data;
     for (int32_t* i = grstarts; i != endof(grstarts); ++i)
     {
-        const int32_t val = d[0] | d[1] << 8 | d[2] << 16;
+        // (casts: int may be 16 bits)
+        const int32_t val = (int32_t) d[0] | (int32_t) d[1] << 8 | (int32_t) d[2] << 16;
         *i = (val == 0x00FFFFFF ? -1 : val);
         d += 3;
     }
@@ -523,12 +537,25 @@ void CAL_SetupGrFile (void)
 //
     pictable=(pictabletype *) malloc(NUMPICS*sizeof(pictabletype));
     CHECKMALLOCRESULT(pictable);
+#ifdef MEGA65
+    // The whole file is in attic RAM: expand straight from it.
+    grfar = m65_file_far(fname, NULL);
+    {
+        farptr tmp = far_alloc(NUMPICS * sizeof(pictabletype));
+        if (FAR_ISNULL(tmp))
+            Quit("Out of far memory");
+        far_huff_expand(FAR_ADD(grfar, GRFILEPOS(STRUCTPIC) + 4), tmp,
+                        NUMPICS * sizeof(pictabletype), (const m65_huffnode *)grhuffman);
+        far_read(pictable, tmp, NUMPICS * sizeof(pictabletype));
+    }
+#else
     CAL_GetGrChunkLength(STRUCTPIC);                // position file pointer
     compseg=(byte *) malloc(chunkcomplen);
     CHECKMALLOCRESULT(compseg);
     read (grhandle,compseg,chunkcomplen);
     CAL_HuffExpand(compseg, (byte*)pictable, NUMPICS * sizeof(pictabletype), grhuffman);
     free(compseg);
+#endif
 }
 
 //==========================================================================
@@ -577,6 +604,9 @@ void CAL_SetupMapFile (void)
     maphandle = open(fname, O_RDONLY | O_BINARY);
     if (maphandle == -1)
         CA_CannotOpen(fname);
+#ifdef MEGA65
+    mapfar = m65_file_far(fname, NULL);
+#endif
 #else
     strcpy(fname,mfilename);
     strcat(fname,extension);
@@ -649,6 +679,9 @@ void CAL_SetupAudioFile (void)
     audiohandle = open(fname, O_RDONLY | O_BINARY);
     if (audiohandle == -1)
         CA_CannotOpen(fname);
+#ifdef MEGA65
+    audiofar = m65_file_far(fname, NULL);
+#endif
 }
 
 //==========================================================================
@@ -732,6 +765,27 @@ void CA_Shutdown (void)
 ======================
 */
 
+#ifdef MEGA65
+
+// Audio chunks are used in place, in their raw file format, from the copy of
+// AUDIOT in attic RAM. (The AdLib instrument header is not unpacked into an
+// AdLibSound: the MEGA65 sound code reads the raw layout.)
+
+int32_t CA_CacheAudioChunk (int chunk)
+{
+    int32_t pos = audiostarts[chunk];
+
+    audiosegs[chunk] = FAR_ADD(audiofar, pos);
+    return audiostarts[chunk+1]-pos;
+}
+
+void CA_CacheAdlibSoundChunk (int chunk)
+{
+    CA_CacheAudioChunk(chunk);
+}
+
+#else
+
 int32_t CA_CacheAudioChunk (int chunk)
 {
     int32_t pos = audiostarts[chunk];
@@ -788,6 +842,8 @@ void CA_CacheAdlibSoundChunk (int chunk)
 
     audiosegs[chunk]=(byte *) sound;
 }
+
+#endif
 
 //===========================================================================
 
@@ -861,6 +917,82 @@ cachein:
 =
 ======================
 */
+
+#ifdef MEGA65
+
+//
+// Expanded size of a chunk. Advances source past the explicit length
+// longword if the chunk has one.
+//
+static int32_t CAL_GrChunkExpandedSize (int chunk, farptr *source)
+{
+    if (chunk >= STARTTILE8 && chunk < STARTEXTERNS)
+    {
+        if (chunk<STARTTILE8M)          // tile 8s are all in one chunk!
+            return 64*NUMTILE8;
+        else if (chunk<STARTTILE16)
+            return 128*NUMTILE8M;
+        else if (chunk<STARTTILE16M)    // all other tiles are one/chunk
+            return 64*4;
+        else if (chunk<STARTTILE32)
+            return 128*4;
+        else if (chunk<STARTTILE32M)
+            return 64*16;
+        else
+            return 128*16;
+    }
+
+    int32_t expanded = (int32_t) far_peekl(*source);
+    *source = FAR_ADD(*source, 4);
+    return expanded;
+}
+
+void CA_CacheGrChunk (int chunk)
+{
+    int32_t pos, expanded;
+    farptr source;
+
+    if (!FAR_ISNULL(grsegs[chunk]))
+        return;                             // already in memory
+
+    pos = GRFILEPOS(chunk);
+    if (pos<0)                              // $FFFFFFFF start is a sparse tile
+        return;
+
+    source = FAR_ADD(grfar, pos);
+    expanded = CAL_GrChunkExpandedSize(chunk, &source);
+
+    grsegs[chunk] = far_alloc(expanded);
+    if (FAR_ISNULL(grsegs[chunk]))
+        Quit("Out of far memory");
+    far_huff_expand(source, grsegs[chunk], expanded, (const m65_huffnode *)grhuffman);
+}
+
+//
+// Decompresses a chunk onto the screen. The planar picture is expanded into a
+// reusable far scratch buffer, and the video layer draws it from there.
+//
+void CA_CacheScreen (int chunk)
+{
+    static farptr scratch;
+    int32_t expanded;
+    farptr source;
+
+    if (FAR_ISNULL(scratch))
+    {
+        scratch = far_alloc(64000);
+        if (FAR_ISNULL(scratch))
+            Quit("Out of far memory");
+    }
+
+    source = FAR_ADD(grfar, GRFILEPOS(chunk));
+    expanded = CAL_GrChunkExpandedSize(chunk, &source);
+    far_huff_expand(source, scratch, expanded, (const m65_huffnode *)grhuffman);
+
+    VL_FarPlanarToScreen(scratch);
+}
+
+#else
 
 void CAL_ExpandGrChunk (int chunk, int32_t *source)
 {
@@ -1028,6 +1160,8 @@ void CA_CacheScreen (int chunk)
     free(bigbufferseg);
 }
 
+#endif // MEGA65
+
 //==========================================================================
 
 /*
@@ -1039,6 +1173,53 @@ void CA_CacheScreen (int chunk)
 =
 ======================
 */
+
+#ifdef MEGA65
+
+#ifndef CARMACIZED
+#error "The MEGA65 map loader only handles Carmack-compressed maps"
+#endif
+
+//
+// Planes are expanded straight from the copy of GAMEMAPS in attic RAM, through
+// a far scratch buffer for the intermediate (Carmack-expanded) RLEW data.
+//
+void CA_CacheMap (int mapnum)
+{
+    static farptr scratch;
+    const word scratchsize = 0x4000;
+    int     plane;
+    farptr  source;
+    word    expanded;
+
+    mapon = mapnum;
+
+    if (FAR_ISNULL(scratch))
+    {
+        scratch = far_alloc(scratchsize);
+        if (FAR_ISNULL(scratch))
+            Quit("Out of far memory");
+    }
+
+    for (plane = 0; plane<MAPPLANES; plane++)
+    {
+        source = FAR_ADD(mapfar, mapheaderseg[mapnum]->planestart[plane]);
+
+        //
+        // unhuffman, then unRLEW
+        // The huffman'd chunk has a two byte expanded length first
+        // The resulting RLEW chunk also does, even though it's not really
+        // needed
+        //
+        expanded = far_peekw(source);
+        if (expanded > scratchsize)
+            Quit("CA_CacheMap: plane too large");
+        far_carmack_expand(FAR_ADD(source, 2), scratch, expanded);
+        far_rlew_expand(FAR_ADD(scratch, 2), mapsegs[plane], maparea*2, RLEWtag);
+    }
+}
+
+#else
 
 void CA_CacheMap (int mapnum)
 {
@@ -1104,6 +1285,8 @@ void CA_CacheMap (int mapnum)
             free(bigbufferseg);
     }
 }
+
+#endif // MEGA65
 
 //===========================================================================
 

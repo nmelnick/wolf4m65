@@ -1418,16 +1418,19 @@ static inline fixed FixedMul(fixed a, fixed b)
 #define lengthof(x) (sizeof(x) / sizeof(*(x)))
 #define endof(x)    ((x) + lengthof(x))
 
+// The casts matter where int is 16 bits (MEGA65): without them the shifts
+// overflow int, or sign-extend a high byte into the upper bits.
 static inline word READWORD(byte *&ptr)
 {
-    word val = ptr[0] | ptr[1] << 8;
+    word val = (word) ptr[0] | (word) ptr[1] << 8;
     ptr += 2;
     return val;
 }
 
 static inline longword READLONGWORD(byte *&ptr)
 {
-    longword val = ptr[0] | ptr[1] << 8 | ptr[2] << 16 | ptr[3] << 24;
+    longword val = (longword) ptr[0] | (longword) ptr[1] << 8
+                 | (longword) ptr[2] << 16 | (longword) ptr[3] << 24;
     ptr += 4;
     return val;
 }

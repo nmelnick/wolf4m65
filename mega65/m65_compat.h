@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "m65_far.h"      // farptr, used in the game's headers under MEGA65
+
 #ifdef __cplusplus
 extern "C" {
 #endif
