@@ -30,12 +30,18 @@ typedef struct { Sint16 x, y; Uint16 w, h; } SDL_Rect;
 
 typedef struct { Uint8 BytesPerPixel; } SDL_PixelFormat;
 
+// On the MEGA65 pixels are in far memory, so `pixels` is always NULL and
+// `farpixels` holds the far address of pixel (0,0). A tiled surface uses the
+// VIC-IV full-colour character layout (see m65_video.h; 320x200 only), a
+// linear one is row-major with `pitch` bytes per row.
 typedef struct SDL_Surface {
     Uint32 flags;
     SDL_PixelFormat *format;
     int w, h;
     Uint16 pitch;
     void *pixels;
+    Uint32 farpixels;
+    Uint8 tiled;
 } SDL_Surface;
 
 #define SDL_SWSURFACE  0x00000000

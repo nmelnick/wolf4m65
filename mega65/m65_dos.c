@@ -17,12 +17,13 @@
 #define SD_CTL_MAPSDBUF  (*(volatile uint8_t *)0xD689)   // bit 7: show the SD
                                                          // buffer, not the FDC's
 
-// Filename buffer. Hyppo's setname only honours the pointer's high byte, so
-// the buffer must start on a page boundary, and it must be below $8000
-// (setname fails with error $10 otherwise). The section is ordinary .bss to the
-// stock linker script; scripts that put data high must place .bss.lowbss.*
-// low (see tools/ovlgen.py).
-static char namebuf[16] __attribute__((aligned(256), section(".bss.lowbss.namebuf")));
+// Filename buffer. Hyppo's setname only honours the pointer's high byte, and
+// the buffer must be below $8000 (setname fails with error $10 otherwise).
+// Neither can be relied on for a linker-placed buffer in a large program, so
+// it lives at a fixed address: page $02, BASIC's input buffer, which is free
+// once the program owns the machine (no BASIC, no KERNAL calls).
+#define namebuf ((char *)0x0200)
+#define NAMEBUF_SIZE 64
 
 struct hres { uint8_t a, x, y, ok; };
 
@@ -59,7 +60,7 @@ int m65_dos_open(const char *name)
     struct hres r;
     size_t n = strlen(name);
 
-    if (n >= sizeof namebuf)
+    if (n >= NAMEBUF_SIZE)
         return -1;
     memcpy(namebuf, name, n + 1);
 

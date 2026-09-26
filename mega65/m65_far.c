@@ -19,30 +19,32 @@ void far_copy(farptr dst, farptr src, uint16_t count)
     m65_dma_copy(dst.a, src.a, count);
 }
 
+// Single bytes use the 45GS02's flat 32-bit indirect addressing, through a
+// pointer in zero page: a few cycles instead of a DMA job.
+static volatile uint32_t flatptr __attribute__((section(".zp.bss")));
+
 uint8_t far_peek(farptr p)
 {
     uint8_t v;
-    far_read(&v, p, 1);
-    return v;
-}
-
-uint16_t far_peekw(farptr p)
-{
-    uint16_t v;
-    far_read(&v, p, 2);
-    return v;
-}
-
-uint32_t far_peekl(farptr p)
-{
-    uint32_t v;
-    far_read(&v, p, 4);
+    flatptr = p.a;
+    __asm__ volatile("ldz #0\n lda [%1],z" : "=a"(v) : "i"(&flatptr) : "memory");
     return v;
 }
 
 void far_poke(farptr p, uint8_t v)
 {
-    far_write(p, &v, 1);
+    flatptr = p.a;
+    __asm__ volatile("ldz #0\n sta [%0],z" :: "i"(&flatptr), "a"(v) : "memory");
+}
+
+uint16_t far_peekw(farptr p)
+{
+    return far_peek(p) | (uint16_t)far_peek(FAR_ADD(p, 1)) << 8;
+}
+
+uint32_t far_peekl(farptr p)
+{
+    return far_peekw(p) | (uint32_t)far_peekw(FAR_ADD(p, 2)) << 16;
 }
 
 static uint32_t file_next = ATTIC_FILES;

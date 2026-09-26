@@ -1,4 +1,7 @@
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_surf.h"
+#endif
 
 
 pictabletype	*pictable;
@@ -9,6 +12,58 @@ byte	fontcolor,backcolor;
 int	    fontnumber;
 
 //==========================================================================
+
+#ifdef MEGA65
+
+//
+// Fonts live in far memory: a fontstruct header (height, location[256],
+// width[256]) followed by the glyphs, each glyph height rows of width bytes.
+//
+static farptr FontFar (void)
+{
+    return grsegs[STARTFONT+fontnumber];
+}
+
+void VWB_DrawPropString(const char* string)
+{
+    static byte glyph[32*32];
+    farptr font = FontFar();
+    int height = (int16_t) far_peekw(font);
+    byte ch;
+
+    while ((ch = (byte)*string++)!=0)
+    {
+        int width = (int8_t) far_peek(FAR_ADD(font, 2 + 512 + ch));
+        int location = (int16_t) far_peekw(FAR_ADD(font, 2 + 2 * ch));
+        int x, i;
+
+        if (width * height > (int) sizeof(glyph))
+            Quit("VWB_DrawPropString: glyph too large");
+        if (width * height)
+            far_read(glyph, FAR_ADD(font, location), width * height);
+        for (x = 0; x < width; x++)
+        {
+            for (i = 0; i < height; i++)
+            {
+                if (glyph[i * width + x] && (unsigned) px < screenWidth
+                    && (unsigned) (py + i) < screenHeight)
+                    VL_Plot(px, py + i, fontcolor);
+            }
+            px++;
+        }
+    }
+}
+
+void VW_MeasurePropString (const char *string, word *width, word *height)
+{
+    farptr font = FontFar();
+
+    *height = (int16_t) far_peekw(font);
+    for (*width = 0;*string;string++)
+        *width += (int8_t) far_peek(FAR_ADD(font, 2 + 512 + *((byte *)string)));
+}
+
+#else
 
 void VWB_DrawPropString(const char* string)
 {
@@ -50,6 +105,10 @@ void VWB_DrawPropString(const char* string)
 
 	VL_UnlockSurface(curSurface);
 }
+
+#endif
+
+#ifndef MEGA65
 
 /*
 =================
@@ -108,6 +167,8 @@ void VW_MeasurePropString (const char *string, word *width, word *height)
 	VWL_MeasureString(string,width,height,(fontstruct *)grsegs[STARTFONT+fontnumber]);
 }
 
+#endif
+
 /*
 =============================================================================
 
@@ -130,7 +191,11 @@ void VWB_DrawTile8 (int x, int y, int tile)
 
 void VWB_DrawTile8M (int x, int y, int tile)
 {
+#ifdef MEGA65
+	VL_MemToScreen (FAR_ADD(grsegs[STARTTILE8M], tile*64),8,8,x,y);
+#else
 	VL_MemToScreen (((byte *)grsegs[STARTTILE8M])+tile*64,8,8,x,y);
+#endif
 }
 
 void VWB_DrawPic (int x, int y, int chunknum)
@@ -219,6 +284,9 @@ void LatchDrawPicScaledCoord (unsigned scx, unsigned scy, unsigned picnum)
 
 void FreeLatchMem()
 {
+#ifdef MEGA65
+    return;             // latches are loaded once and kept (see LoadLatchMem)
+#endif
     int i;
     for(i = 0; i < 2 + LATCHPICS_LUMP_END - LATCHPICS_LUMP_START; i++)
     {
@@ -238,8 +306,18 @@ void FreeLatchMem()
 void LoadLatchMem (void)
 {
 	int	i,width,height,start,end;
+#ifdef MEGA65
+	farptr src;
+#else
 	byte *src;
+#endif
 	SDL_Surface *surf;
+
+#ifdef MEGA65
+	// The far heap never frees, so load the (unchanging) latches only once.
+	if (latchpics[0])
+		return;
+#endif
 
 //
 // tile 8s
@@ -259,7 +337,11 @@ void LoadLatchMem (void)
 	for (i=0;i<NUMTILE8;i++)
 	{
 		VL_MemToLatch (src, 8, 8, surf, (i & 7) * 8, (i >> 3) * 8);
+#ifdef MEGA65
+		src = FAR_ADD(src, 64);
+#else
 		src += 64;
+#endif
 	}
 	UNCACHEGRCHUNK (STARTTILE8);
 
@@ -351,6 +433,77 @@ void VH_Startup()
 
     rndmask = rndmasks[rndbits - 17];
 }
+
+#ifdef MEGA65
+
+// As below, but the surfaces are in far memory: the pixel copy goes through
+// surf_get/surf_plot, and there is no double buffering (screen is displayed).
+boolean FizzleFade (SDL_Surface *source, int x1, int y1,
+    unsigned width, unsigned height, unsigned frames, boolean abortable)
+{
+    unsigned x, y, frame, pixperframe;
+    int32_t  rndval;
+
+    rndval = 0;
+    pixperframe = width * height / frames;
+
+    IN_StartAck ();
+
+    frame = GetTimeCount();
+
+    do
+    {
+        IN_ProcessEvents();
+
+        if(abortable && IN_CheckAck ())
+        {
+            SDL_BlitSurface(source, NULL, screen, NULL);
+            return true;
+        }
+
+        for(unsigned p = 0; p < pixperframe; p++)
+        {
+            //
+            // seperate random value into x/y pair
+            //
+
+            x = rndval >> rndbits_y;
+            y = rndval & ((1 << rndbits_y) - 1);
+
+            //
+            // advance to next random element
+            //
+
+            rndval = (rndval >> 1) ^ (rndval & 1 ? 0 : rndmask);
+
+            if(x >= width || y >= height)
+            {
+                if(rndval == 0)     // entire sequence has been completed
+                    goto finished;
+                p--;
+                continue;
+            }
+
+            //
+            // copy one pixel
+            //
+
+            surf_plot(screen, x1 + x, y1 + y, surf_get(source, x1 + x, y1 + y));
+
+            if(rndval == 0)		// entire sequence has been completed
+                goto finished;
+        }
+
+        frame++;
+        Delay(frame - GetTimeCount());        // don't go too fast
+    } while (1);
+
+finished:
+    SDL_BlitSurface(source, NULL, screen, NULL);
+    return false;
+}
+
+#else
 
 boolean FizzleFade (SDL_Surface *source, int x1, int y1,
     unsigned width, unsigned height, unsigned frames, boolean abortable)
@@ -468,3 +621,5 @@ finished:
     SDL_Flip(screen);
     return false;
 }
+
+#endif // MEGA65

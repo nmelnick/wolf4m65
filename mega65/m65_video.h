@@ -17,7 +17,8 @@
 #define M65_CELLS_X    (M65_SCREEN_W / 8)
 #define M65_CELLS_Y    (M65_SCREEN_H / 8)
 
-#define M65_FB_BASE      0x40000UL   // pixel data (64000 bytes)
+#define M65_FB_BASE      0x40000UL   // displayed pixel data (64000 bytes)
+#define M65_FB2_BASE     0x50000UL   // second framebuffer (the game's draw target)
 #define M65_SCREENRAM    0x12000UL   // 40x25 16-bit cell numbers
 
 static inline uint32_t m65_fb_addr(unsigned x, unsigned y)

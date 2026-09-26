@@ -37,5 +37,11 @@ with open(os.devnull, "w") as null:
             proc.wait(30)
         except subprocess.TimeoutExpired:
             proc.kill()
-print(f"xrun: {'marker seen' if seen else 'TIMEOUT'} after {time.time() - start:.1f}s")
+if seen:
+    what = "marker seen"
+elif time.time() - start < timeout:
+    what = "EMULATOR EXITED (no marker)"
+else:
+    what = "TIMEOUT"
+print(f"xrun: {what} after {time.time() - start:.1f}s")
 sys.exit(0 if seen else 1)

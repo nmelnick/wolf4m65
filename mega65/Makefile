@@ -12,10 +12,11 @@ XEMUFLAGS = -headless -sleepless -fastboot
 # -fno-lto so that `make size` reports real machine-code sizes.
 
 WOLFDIR  = ..
-WOLFSRCS = id_ca id_in id_pm id_us_1 id_vh id_vl wl_act1 wl_act2 wl_agent \
+# (id_vl.cpp is replaced by m65_vl.cpp on the MEGA65.)
+WOLFSRCS = id_ca id_in id_pm id_us_1 id_vh wl_act1 wl_act2 wl_agent \
            wl_debug wl_draw wl_game wl_inter wl_main wl_menu wl_play \
            wl_state wl_text
-WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS)))
+WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
@@ -25,6 +26,10 @@ WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
 obj/%.o: $(WOLFDIR)/%.cpp m65_compat.h SDL.h
 	@mkdir -p obj
 	$(CXX) $(WOLFFLAGS) -c $< -o $@
+
+obj/m65_vl.o: m65_vl.cpp m65_compat.h SDL.h
+	@mkdir -p obj
+	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -c $< -o $@
 
 wolf-objs: $(WOLFOBJS)
 
@@ -118,7 +123,7 @@ build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_mapref.py $@
 
-M65LIB = m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
+M65LIB = m65_assert.c m65_far.c m65_huff.c m65_mapexp.c m65_posix.c m65_dos.c m65_video.c
 
 catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(M65LIB)
 	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(M65LIB)
@@ -128,6 +133,20 @@ test-ca: catest.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg catest.prg -dumpmem catest.mem
 	@tr -d '\r' < catest.ser | grep -a -A1 '^QUIT:' || true
 	python3 tools/check_catest.py catest.mem build/huffref.h build/mapref.h
+
+# --- Title test: id_ca + id_vh + the MEGA65 video layer ----------------------------
+
+M65VID = m65_sdl.c m65_surf.c
+
+titletest.prg: titletest.cpp build/huffref.h m65_vl.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_vh.cpp $(M65LIB) $(M65VID)
+	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -o $@ titletest.cpp m65_vl.cpp $(WOLFDIR)/id_ca.cpp \
+	  $(WOLFDIR)/id_vh.cpp $(M65LIB) $(M65VID)
+
+test-title: titletest.prg $(SDIMG)
+	python3 tools/xrun.py 120 titletest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg titletest.prg -dumpmem titletest.mem -screenshot titletest.png
+	@tr -d '\r' < titletest.ser | grep -a -A1 '^QUIT:' || true
+	python3 tools/check_titletest.py titletest.mem build/huffref.h
 
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
@@ -149,4 +168,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title
