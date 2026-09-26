@@ -813,23 +813,28 @@ int CalcRotate (objtype *ob)
 //
 // ScaleShape and SimpleScaleShape on the MEGA65: the sprite (a t_compshape:
 // leftpix, rightpix, dataofs[], then posts and texels) is read in place from
-// far memory, and every vertical span is one DMA fill (the framebuffer's
-// columns are every 8th byte). The control flow is the original's; pixcnt
-// and ycnt are 32-bit, since i * pixheight overflows a 16-bit int for close
-// sprites.
+// far memory. The spans are the original's, but each texture column is
+// scaled once into a column buffer (a post's texels come in with one DMA
+// read) and copied with one DMA job per post to every screen column it
+// covers, instead of one DMA job per span per screen column (thousands of
+// tiny jobs a frame). pixcnt and ycnt are 32-bit, since i * pixheight
+// overflows a 16-bit int for close sprites.
 //
 static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                            unsigned height, bool clipwalls)
 {
+    enum { MAXSEGS = 16 };
+    static byte texels[TEXTURESIZE];
+    uint8_t segtop[MAXSEGS], segend[MAXSEGS], nsegs;
     farptr shape = PM_GetSprite(shapenum);
-    farptr cmdptr, cline, line;
+    farptr cmdptr, line;
     uint32_t pixheight;
     int32_t pixcnt, ycnt;
     unsigned starty, endy, j, leftpix, rightpix;
     int actx, i, upperedge;
     int16_t newstart;
-    int scrstarty, screndy, lpix, rpix;
-    byte col;
+    int scrstarty, screndy, lpix, rpix, top, bot;
+    uint8_t k;
 
     pixheight = (uint32_t) scale * SPRITESCALEFACTOR;
     actx = xcenter - scale;
@@ -849,40 +854,63 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
         {
             if(lpix<0) lpix=0;
             if(rpix>viewwidth) rpix=viewwidth,i=rightpix+1;
-            cline = FAR_ADD(shape, far_peekw(cmdptr));
-            while(lpix<rpix)
-            {
-                if(!clipwalls || wallheight[lpix]<=(int)height)
-                {
-                    line=cline;
-                    while((endy = far_peekw(line)) != 0)
-                    {
-                        endy >>= 1;
-                        newstart = (int16_t) far_peekw(FAR_ADD(line, 2));
-                        starty = far_peekw(FAR_ADD(line, 4)) >> 1;
-                        line = FAR_ADD(line, 6);
-                        j=starty;
-                        ycnt=(int32_t)j*pixheight;
-                        screndy=(int)(ycnt>>6)+upperedge;
-                        for(;j<endy;j++)
-                        {
-                            scrstarty=screndy;
-                            ycnt+=pixheight;
-                            screndy=(int)(ycnt>>6)+upperedge;
-                            if(scrstarty!=screndy && screndy>0)
-                            {
-                                col=far_peek(FAR_ADD(shape, (int32_t)newstart+j));
-                                if(scrstarty<0) scrstarty=0;
-                                if(screndy>viewheight) screndy=viewheight,j=endy;
 
-                                if(scrstarty<screndy)
-                                    m65_dma_fill_skip(ViewAddr(lpix, scrstarty), col,
-                                                      screndy-scrstarty, M65_COLUMN_STEP);
-                            }
+            //
+            // Scale this texture column once, into m65_colbuf: each of its
+            // posts (runs of opaque texels) is a run of rows; the rows each
+            // texel covers are the original's spans, which follow on from
+            // one another. Then copy the runs to each screen column the
+            // texture column covers.
+            //
+            nsegs = 0;
+            line = FAR_ADD(shape, far_peekw(cmdptr));
+            while((endy = far_peekw(line)) != 0)
+            {
+                endy >>= 1;
+                newstart = (int16_t) far_peekw(FAR_ADD(line, 2));
+                starty = far_peekw(FAR_ADD(line, 4)) >> 1;
+                line = FAR_ADD(line, 6);
+                far_read(texels, FAR_ADD(shape, (int32_t)newstart+starty), endy-starty);
+                top = -1;
+                bot = 0;
+                j=starty;
+                ycnt=(int32_t)j*pixheight;
+                screndy=(int)(ycnt>>6)+upperedge;
+                for(;j<endy;j++)
+                {
+                    scrstarty=screndy;
+                    ycnt+=pixheight;
+                    screndy=(int)(ycnt>>6)+upperedge;
+                    if(scrstarty!=screndy && screndy>0)
+                    {
+                        byte col = texels[j-starty];
+                        if(scrstarty<0) scrstarty=0;
+                        if(screndy>viewheight) screndy=viewheight,j=endy;
+
+                        if(scrstarty<screndy)
+                        {
+                            if(top < 0) top = scrstarty;
+                            memset(&m65_colbuf[scrstarty], col, screndy-scrstarty);
+                            bot = screndy;
                         }
                     }
                 }
-                lpix++;
+                if(top >= 0 && nsegs < MAXSEGS)
+                {
+                    segtop[nsegs] = (uint8_t) top;
+                    segend[nsegs] = (uint8_t) bot;
+                    nsegs++;
+                }
+            }
+
+            for(; lpix<rpix; lpix++)
+            {
+                if(clipwalls && wallheight[lpix]>(int)height)
+                    continue;
+                for(k = 0; k < nsegs; k++)
+                    m65_dma_copy_skip(ViewAddr(lpix, segtop[k]),
+                                      (uint32_t)(uintptr_t)&m65_colbuf[segtop[k]],
+                                      segend[k]-segtop[k], M65_COLUMN_STEP);
             }
         }
     }
