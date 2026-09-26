@@ -79,10 +79,60 @@ void m65_takeover(void)
 
 extern char __m65_data_start[], __m65_data_size[];
 
+// Write an ASCII string to the text screen at (row, column 0) as screen
+// codes (the upper-case character set: letters of either case -> 1-26).
+static void screen_puts(uint32_t screen, uint16_t linestep, uint8_t row, const char *s)
+{
+    uint32_t a = screen + (uint32_t)row * linestep;
+    for (; *s; s++, a++) {
+        char c = *s;
+        if (c >= 'a' && c <= 'z')
+            c -= 'a' - 1;
+        else if (c >= 'A' && c <= 'Z')
+            c -= 'A' - 1;
+        else if (c >= 0x60)
+            c = ' ';
+        m65_dma_fill(a, (uint8_t)c, 1);
+    }
+}
+
+// Report a start-up failure on the debug serial port and on the screen
+// (still the text screen the program was started from, but its contents
+// are gone: the takeover put the program's data there), then stop with a
+// red border.
 static void fail(const char *what, const char *file)
 {
+    char line1[48], line2[16];
+    uint32_t screen, colour;
+    uint16_t linestep;
+    uint8_t i;
+
     m65_debug_puts(what);
     m65_debug_puts(file);
+
+    // (The strings may be in the screen memory about to be cleared.)
+    for (i = 0; i < sizeof line1 - 1 && what[i]; i++)
+        line1[i] = what[i];
+    line1[i] = 0;
+    for (i = 0; i < sizeof line2 - 1 && file[i]; i++)
+        line2[i] = file[i];
+    line2[i] = 0;
+
+    // Where the VIC-IV shows its text screen and colours.
+    screen = *(volatile uint8_t *)0xD060
+           | (uint32_t)*(volatile uint8_t *)0xD061 << 8
+           | (uint32_t)*(volatile uint8_t *)0xD062 << 16
+           | (uint32_t)(*(volatile uint8_t *)0xD063 & 0x0F) << 24;
+    linestep = *(volatile uint8_t *)0xD058 | *(volatile uint8_t *)0xD059 << 8;
+    colour = 0xFF80000UL + (*(volatile uint8_t *)0xD064
+                            | *(volatile uint8_t *)0xD065 << 8);
+    m65_dma_fill(screen, ' ', 25 * linestep);
+    m65_dma_fill(colour, 1, 25 * linestep);     // white
+    *(volatile uint8_t *)0xD021 = 0;
+    screen_puts(screen, linestep, 1, line1);
+    screen_puts(screen, linestep, 2, line2);
+    screen_puts(screen, linestep, 4, "Copy WOLF.OVL, WOLF.DAT, SIGNON.BIN,");
+    screen_puts(screen, linestep, 5, "TABLES.BIN and the *.WL1 files to the SD card.");
     for (;;)
         *(volatile uint8_t *)0xD020 = 2;
 }
@@ -97,12 +147,12 @@ void m65_startup(const char *ovlfile, const char *datafile)
     // .data comes from its own file (it is not in the PRG).
     if (size) {
         if (m65_dos_init() != 0 || (fd = m65_dos_open(datafile)) < 0)
-            fail("m65_startup: cannot open the data file:", datafile);
+            fail("Cannot open the data file:", datafile);
         if (m65_dos_read(fd, (uint32_t)(uintptr_t)__m65_data_start, size) != size)
-            fail("m65_startup: the data file does not match the program:", datafile);
+            fail("The data file does not match the program:", datafile);
         m65_dos_close(fd);
     }
 
     if (ovl_load(ovlfile) != 0)
-        fail("m65_startup: cannot load the code overlays:", ovlfile);
+        fail("Cannot load the code overlays:", ovlfile);
 }

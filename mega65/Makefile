@@ -283,6 +283,12 @@ run-wolf: wolf.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
 	@tr -d '\r' < wolf.ser | tail -20
 
+# Play it in Xemu (a window), on the SD image that has the game's files:
+# build/sd.img (a copy of your Xemu image; yours is left alone).
+run-xemu: wolf.prg $(SDIMG)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
+	$(XEMU) -sdimg $(SDIMG) -prg wolf.prg
+
 # Run a PRG headless for a while and save a screenshot: make shot PRG=vtest.prg
 shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
@@ -290,4 +296,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot run-wolf wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot run-wolf run-xemu wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
