@@ -224,7 +224,7 @@ static void ScanInfoPlane(void)
 {
     unsigned x,y;
     int      tile;
-    word     *start;
+    mapptr   start;
 
     start = mapsegs[1];
     for (y=0;y<mapheight;y++)
@@ -631,7 +631,7 @@ static void ScanInfoPlane(void)
 void SetupGameLevel (void)
 {
     int  x,y;
-    word *map;
+    mapptr map;
     word tile;
 
 
@@ -677,7 +677,11 @@ void SetupGameLevel (void)
 // copy the wall data to a data segment array
 //
     memset (tilemap,0,sizeof(tilemap));
+#ifdef MEGA65
+    actorat.clear ();
+#else
     memset (actorat,0,sizeof(actorat));
+#endif
     map = mapsegs[0];
     for (y=0;y<mapheight;y++)
     {

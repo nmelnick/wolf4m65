@@ -786,7 +786,7 @@ void OverheadRefresh (void)
                     break;
 #endif
                 case actoratview:
-                    tile = (unsigned)actorat[x][y];
+                    tile = (unsigned)(uintptr_t)actorat[x][y];
                     break;
             }
 

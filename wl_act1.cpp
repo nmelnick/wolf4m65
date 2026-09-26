@@ -360,7 +360,7 @@ void InitDoorList (void)
 
 void SpawnDoor (int tilex, int tiley, boolean vertical, int lock)
 {
-    word *map;
+    mapptr map;
 
     if (doornum==MAXDOORS)
         Quit ("64+ doors on level!");
@@ -563,7 +563,7 @@ void DoorOpen (int door)
 void DoorOpening (int door)
 {
     unsigned area1,area2;
-    word *map;
+    mapptr map;
     int32_t position;
 
     position = doorposition[door];
@@ -631,7 +631,7 @@ void DoorOpening (int door)
 void DoorClosing (int door)
 {
     unsigned area1,area2;
-    word *map;
+    mapptr map;
     int32_t position;
     int tilex,tiley;
 

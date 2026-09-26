@@ -389,7 +389,11 @@ boolean SaveTheGame(FILE *file,int x,int y)
     size += sizeof(gamestate) +
             sizeof(LRstruct)*LRpack +
             sizeof(tilemap) +
+#ifdef MEGA65
+            actorat.bytes() +
+#else
             sizeof(actorat) +
+#endif
             sizeof(laststatobj) +
             sizeof(statobjlist) +
             sizeof(doorposition) +
@@ -613,7 +617,7 @@ boolean LoadTheGame(FILE *file,int x,int y)
 
     if (gamestate.secretcount)      // assign valid floorcodes under moved pushwalls
     {
-        word *map, *obj; word tile, sprite;
+        mapptr map, obj; word tile, sprite;
         map = mapsegs[0]; obj = mapsegs[1];
         for (y=0;y<mapheight;y++)
             for (x=0;x<mapwidth;x++)

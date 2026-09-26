@@ -82,3 +82,14 @@ uint32_t far_heap_used(void)
 {
     return heap_next - ATTIC_HEAP;
 }
+
+static uint32_t chip_next = CHIP_HEAP;
+
+farptr far_alloc_chip(uint16_t size)
+{
+    farptr p = FAR(chip_next);
+    if (size > CHIP_HEAP_END - chip_next)
+        return FARNULL;
+    chip_next += (size + 1) & ~1U;
+    return p;
+}

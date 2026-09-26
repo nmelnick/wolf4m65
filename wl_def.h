@@ -888,7 +888,7 @@ typedef enum
 } exit_t;
 
 
-extern word *mapsegs[MAPPLANES];
+extern mapptr mapsegs[MAPPLANES];
 extern int mapon;
 
 /*
@@ -1004,7 +1004,13 @@ void UpdateSoundLoc(void);
 
 extern  byte            tilemap[MAPSIZE][MAPSIZE];      // wall values only
 extern  byte            spotvis[MAPSIZE][MAPSIZE];
+#ifdef MEGA65
+// In far memory (chip RAM); behaves like the array (see m65_fargrid.hpp).
+#include "m65_fargrid.hpp"
+extern  FarPtrGrid<objtype, MAPSIZE> actorat;
+#else
 extern  objtype         *actorat[MAPSIZE][MAPSIZE];
+#endif
 
 extern  objtype         *player;
 
@@ -1396,7 +1402,14 @@ static inline fixed FixedMul(fixed a, fixed b)
 
 #define GetTicks() ((SDL_GetTicks()*7)/100)
 
+#ifdef MEGA65
+// Pointers are 16-bit: the test above would never be true. The non-pointer
+// values stored in actorat are tile codes below 256, and nothing the game
+// points to lives in the first page.
+#define ISPOINTER(x) (((uintptr_t)(x)) >= 256)
+#else
 #define ISPOINTER(x) ((((uintptr_t)(x)) & ~0xffff) != 0)
+#endif
 
 #define CHECKMALLOCRESULT(x) if(!(x)) Quit("Out of memory at %s:%i", __FILE__, __LINE__)
 

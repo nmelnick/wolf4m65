@@ -26,6 +26,11 @@ typedef struct { uint32_t a; } farptr;
 //   MB $81        code overlays (ovl_rt.s / ovl_load.c)
 //   $8200000...   game data files, loaded whole at start-up
 //   $8400000...   far heap: decompressed graphics and audio chunks
+// Chip RAM (faster than attic RAM) used as far memory:
+//   $13000-$1F7FF chip heap: hot game data (map planes, actorat). Above our
+//                 screen RAM ($12000), below the C64-style colour RAM view.
+#define CHIP_HEAP        0x13000UL
+#define CHIP_HEAP_END    0x1F800UL
 #define ATTIC_FILES      0x8200000UL
 #define ATTIC_FILES_END  0x8400000UL
 #define ATTIC_HEAP       0x8400000UL
@@ -49,6 +54,9 @@ farptr far_load_file(const char *name, uint32_t *size);
 // Far heap: bump allocation, nothing is ever freed. Returns FARNULL when full.
 farptr far_alloc(uint32_t size);
 uint32_t far_heap_used(void);
+
+// The same, in chip RAM (CHIP_HEAP): for data accessed often.
+farptr far_alloc_chip(uint16_t size);
 
 #ifdef __cplusplus
 }

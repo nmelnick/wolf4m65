@@ -70,7 +70,7 @@ static int32_t bufferseg[BUFFERSIZE/4];
 
 int     mapon;
 
-word    *mapsegs[MAPPLANES];
+mapptr  mapsegs[MAPPLANES];
 static maptype* mapheaderseg[NUMMAPS];
 #ifdef MEGA65
 farptr  audiosegs[NUMSNDCHUNKS];
@@ -638,9 +638,27 @@ void CAL_SetupMapFile (void)
 //
     for (i=0;i<MAPPLANES;i++)
     {
+#ifdef MEGA65
+        // Chip RAM: the planes are read often during play.
+        farptr plane = far_alloc_chip(maparea*2);
+        if (FAR_ISNULL(plane))
+            Quit("Out of chip far memory");
+        mapsegs[i] = plane;
+#else
         mapsegs[i]=(word *) malloc(maparea*2);
         CHECKMALLOCRESULT(mapsegs[i]);
+#endif
     }
+
+#ifdef MEGA65
+    // actorat lives next to the planes, in chip RAM (see wl_def.h).
+    {
+        farptr grid = far_alloc_chip(actorat.bytes());
+        if (FAR_ISNULL(grid))
+            Quit("Out of chip far memory");
+        actorat.init(grid);
+    }
+#endif
 }
 
 
@@ -1215,7 +1233,7 @@ void CA_CacheMap (int mapnum)
         if (expanded > scratchsize)
             Quit("CA_CacheMap: plane too large");
         far_carmack_expand(FAR_ADD(source, 2), scratch, expanded);
-        far_rlew_expand(FAR_ADD(scratch, 2), mapsegs[plane], maparea*2, RLEWtag);
+        far_rlew_expand(FAR_ADD(scratch, 2), mapsegs[plane].far(), maparea*2, RLEWtag);
     }
 }
 

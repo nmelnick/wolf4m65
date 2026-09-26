@@ -40,7 +40,11 @@ int godmode, singlestep, extravbls = 0;
 
 byte tilemap[MAPSIZE][MAPSIZE]; // wall values only
 byte spotvis[MAPSIZE][MAPSIZE];
+#ifdef MEGA65
+FarPtrGrid<objtype, MAPSIZE> actorat;   // storage set up in CA_Startup
+#else
 objtype *actorat[MAPSIZE][MAPSIZE];
+#endif
 
 //
 // replacing refresh manager

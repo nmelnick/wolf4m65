@@ -136,23 +136,30 @@ void far_carmack_expand(farptr source, farptr dest, uint16_t length)
     out_flush();
 }
 
-void far_rlew_expand(farptr source, uint16_t *dest, uint16_t length, uint16_t rlewtag)
+void far_rlew_expand(farptr source, farptr dest, uint16_t length, uint16_t rlewtag)
 {
     uint16_t value, count, i;
-    uint16_t *end = dest + length / 2;
+    uint16_t left = length / 2;             // words still to write
 
     in_start(source);
+    outaddr = dest;
+    outn = 0;
     do
     {
         value = in_word();
         if (value != rlewtag)
-            *dest++ = value;                // uncompressed
+        {
+            out_word(value);                // uncompressed
+            left--;
+        }
         else
         {
             count = in_word();              // compressed string
             value = in_word();
             for (i = 1; i <= count; i++)
-                *dest++ = value;
+                out_word(value);
+            left -= count;
         }
-    } while (dest < end);
+    } while ((int16_t) left > 0);
+    out_flush();
 }

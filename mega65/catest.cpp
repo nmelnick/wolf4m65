@@ -14,6 +14,7 @@ boolean       param_ignorenumchunks = false;
 pictabletype *pictable;
 SDMode        SoundMode;
 extern int    numEpisodesMissing;
+FarPtrGrid<objtype, MAPSIZE> actorat;     // (defined in wl_play.cpp in the game)
 
 // (Arguments are not printed.)
 void Quit (const char *error, ...)
@@ -107,7 +108,7 @@ int main (void)
     for (m = 0; m < REF_NUMMAPS; m++) {
         CA_CacheMap(m);
         for (plane = 0; plane < 2; plane++) {
-            sum_near(mapsegs[plane], 64 * 64 * 2, &a, &b);
+            sum_far(mapsegs[plane].far(), 64 * 64 * 2, &a, &b);
             if (a != mapref[m][plane].sa || b != mapref[m][plane].sb) {
                 if (!rep.mapbad) rep.mapfirstbad = (uint16_t)(m * 2 + plane);
                 rep.mapbad++;

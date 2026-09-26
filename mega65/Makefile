@@ -155,6 +155,16 @@ test-title: titletest.prg $(SDIMG)
 	@tr -d '\r' < titletest.ser | grep -a -A1 '^QUIT:' || true
 	python3 tools/check_titletest.py titletest.mem build/huffref.h build/SIGNON.BIN
 
+# --- Far proxy types (map planes, actorat) ----------------------------------------
+
+proxytest.prg: proxytest.cpp m65_farword.hpp m65_fargrid.hpp $(M65LIB)
+	$(CXX) $(WOLFFLAGS) -o $@ proxytest.cpp $(M65LIB)
+
+test-proxy: proxytest.prg
+	python3 tools/xrun.py 60 proxytest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -prg proxytest.prg -dumpmem proxytest.mem
+	python3 tools/check_proxytest.py proxytest.mem
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -175,4 +185,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

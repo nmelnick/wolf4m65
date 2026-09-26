@@ -850,7 +850,7 @@ statetype s_gretelshoot8        = {false,SPR_GRETEL_SHOOT1,10,NULL,NULL,&s_grete
 
 void SpawnStand (enemy_t which, int tilex, int tiley, int dir)
 {
-    word *map;
+    mapptr map;
     word tile;
 
     switch (which)
