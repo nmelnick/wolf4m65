@@ -16,12 +16,7 @@ public:
 
     operator uint16_t () const { return far_peekw(FAR(a)); }
 
-    FarWord &operator= (uint16_t v)
-    {
-        far_poke(FAR(a), (uint8_t) v);
-        far_poke(FAR(a + 1), (uint8_t) (v >> 8));
-        return *this;
-    }
+    FarWord &operator= (uint16_t v) { far_pokew(FAR(a), v); return *this; }
 
     // Copies the value, not the address: *map = *(map-1).
     FarWord &operator= (const FarWord &o) { return *this = (uint16_t) o; }

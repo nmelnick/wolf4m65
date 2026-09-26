@@ -36,7 +36,9 @@ unsigned scaleFactor;
 boolean  screenfaded;
 unsigned bordercolor;
 
-SDL_Color palette1[256], palette2[256];
+// palette1 holds the start of a fade; each step is computed straight into
+// curpal (the original also used a palette2 buffer: 1KB saved).
+SDL_Color palette1[256];
 SDL_Color curpal[256];
 
 #define RGB(r, g, b) {(r)*255/63, (g)*255/63, (b)*255/63, 0}
@@ -139,14 +141,19 @@ void VL_GetColor (int color, int *red, int *green, int *blue)
     *blue = col->b;
 }
 
-void VL_SetPalette (SDL_Color *palette, bool forceupdate)
+static void PushCurPal (void)
 {
     int i;
-
-    (void) forceupdate;
-    memcpy(curpal, palette, sizeof(SDL_Color) * 256);
     for(i=0; i<256; i++)
-        m65_set_color(i, palette[i].r, palette[i].g, palette[i].b);
+        m65_set_color(i, curpal[i].r, curpal[i].g, curpal[i].b);
+}
+
+void VL_SetPalette (SDL_Color *palette, bool forceupdate)
+{
+    (void) forceupdate;
+    if (palette != curpal)
+        memcpy(curpal, palette, sizeof(SDL_Color) * 256);
+    PushCurPal();
 }
 
 void VL_GetPalette (SDL_Color *palette)
@@ -165,7 +172,6 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 
     VL_WaitVBL(1);
     VL_GetPalette(palette1);
-    memcpy(palette2, palette1, sizeof(SDL_Color) * 256);
 
 //
 // fade through intermediate frames
@@ -173,7 +179,7 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
     for (i=0;i<steps;i++)
     {
         origptr = &palette1[start];
-        newptr = &palette2[start];
+        newptr = &curpal[start];
         for (j=start;j<=end;j++)
         {
             orig = origptr->r;
@@ -190,7 +196,7 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
         }
 
         VL_WaitVBL(1);
-        VL_SetPalette (palette2, true);
+        PushCurPal();
     }
 
 //
@@ -207,7 +213,6 @@ void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
 
     VL_WaitVBL(1);
     VL_GetPalette(palette1);
-    memcpy(palette2, palette1, sizeof(SDL_Color) * 256);
 
 //
 // fade through intermediate frames
@@ -217,15 +222,15 @@ void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
         for (j=start;j<=end;j++)
         {
             delta = palette[j].r-palette1[j].r;
-            palette2[j].r = palette1[j].r + delta * i / steps;
+            curpal[j].r = palette1[j].r + delta * i / steps;
             delta = palette[j].g-palette1[j].g;
-            palette2[j].g = palette1[j].g + delta * i / steps;
+            curpal[j].g = palette1[j].g + delta * i / steps;
             delta = palette[j].b-palette1[j].b;
-            palette2[j].b = palette1[j].b + delta * i / steps;
+            curpal[j].b = palette1[j].b + delta * i / steps;
         }
 
         VL_WaitVBL(1);
-        VL_SetPalette(palette2, true);
+        PushCurPal();
     }
 
 //

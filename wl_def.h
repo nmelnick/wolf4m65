@@ -107,7 +107,14 @@ void Quit(const char *errorStr, ...);
 #define MAXTICS 10
 #define DEMOTICS        4
 
+#ifdef MEGA65
+// The shareware levels spawn at most 109 actors (all difficulties, level 4);
+// 128 leaves room for the player and projectiles, and saves 1.3KB of near
+// memory. GetNewActor quits cleanly if it is ever exceeded.
+#define MAXACTORS       128
+#else
 #define MAXACTORS       150         // max number of nazis, etc / map
+#endif
 #define MAXSTATS        400         // max number of lamps, bonus, etc
 #define MAXDOORS        64          // max number of sliding doors
 #define MAXWALLTILES    64          // max number of wall tiles

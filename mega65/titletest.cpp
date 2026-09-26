@@ -20,6 +20,7 @@ SDMode        SoundMode;
 short        *pixelangle;
 int          *wallheight;
 extern int    numEpisodesMissing;
+extern SDL_Color curpal[256];
 void CAL_SetupGrFile (void);
 
 void Quit (const char *error, ...)
@@ -45,6 +46,7 @@ struct report {
     uint32_t fade_ms;           // how long the 30-step fade-in took
     uint16_t signon_sa, signon_sb;  // checksum of the displayed sign-on screen
     uint8_t  fartext_ok;        // FarText walk of the help article matches
+    uint8_t  palette_ok;        // after the fade: curpal and hardware == gamepal
 };
 
 static struct report rep;
@@ -133,6 +135,19 @@ int main (void)
     t0 = SDL_GetTicks();
     VL_FadeIn(0, 255, gamepal, 30);
     rep.fade_ms = SDL_GetTicks() - t0;
+
+    // The fade must end exactly on gamepal, in curpal and in the VIC-IV's
+    // palette registers (which hold each channel nybble-swapped).
+    rep.palette_ok = 1;
+    for (i = 0; i < 256; i++) {
+        uint8_t r = PALETTE.red[i], g = PALETTE.green[i], bl = PALETTE.blue[i];
+        r = (uint8_t) (r << 4 | r >> 4); g = (uint8_t) (g << 4 | g >> 4);
+        bl = (uint8_t) (bl << 4 | bl >> 4);
+        if (curpal[i].r != gamepal[i].r || curpal[i].g != gamepal[i].g ||
+            curpal[i].b != gamepal[i].b || r != gamepal[i].r ||
+            g != gamepal[i].g || bl != gamepal[i].b)
+            rep.palette_ok = 0;
+    }
 
     // The displayed pixels, in screen order.
     for (y = 0; y < 200; y++) {

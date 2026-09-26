@@ -45,6 +45,7 @@ uint8_t  far_peek(farptr p);
 uint16_t far_peekw(farptr p);
 uint32_t far_peekl(farptr p);
 void     far_poke(farptr p, uint8_t v);
+void     far_pokew(farptr p, uint16_t v);
 
 // Load a whole file from the SD card root into the file area of attic RAM.
 // Files are packed one after the other, each starting on a 256-byte boundary.

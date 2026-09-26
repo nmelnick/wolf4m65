@@ -37,6 +37,12 @@ void far_poke(farptr p, uint8_t v)
     __asm__ volatile("ldz #0\n sta [%0],z" :: "i"(&flatptr), "a"(v) : "memory");
 }
 
+void far_pokew(farptr p, uint16_t v)
+{
+    far_poke(p, (uint8_t)v);
+    far_poke(FAR_ADD(p, 1), (uint8_t)(v >> 8));
+}
+
 uint16_t far_peekw(farptr p)
 {
     return far_peek(p) | (uint16_t)far_peek(FAR_ADD(p, 1)) << 8;

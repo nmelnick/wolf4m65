@@ -24,13 +24,7 @@ public:
         explicit operator uintptr_t () const { return far_peekw(FAR(a)); }
         T *operator-> () const { return (T *) *this; }
 
-        Ref &operator= (T *p)
-        {
-            uint16_t v = (uint16_t) (uintptr_t) p;
-            far_poke(FAR(a), (uint8_t) v);
-            far_poke(FAR(a + 1), (uint8_t) (v >> 8));
-            return *this;
-        }
+        Ref &operator= (T *p) { far_pokew(FAR(a), (uint16_t) (uintptr_t) p); return *this; }
         // Copies the value, not the address.
         Ref &operator= (const Ref &o) { return *this = (T *) o; }
 
@@ -42,7 +36,7 @@ public:
     {
     public:
         explicit Row (uint32_t addr) : a(addr) {}
-        Ref operator[] (int y) const { return Ref(a + 2 * (uint32_t) y); }
+        Ref operator[] (int y) const { return Ref(a + (uint16_t) (2 * y)); }
     private:
         uint32_t a;
     };
@@ -53,7 +47,8 @@ public:
     void clear (void) { m65_dma_fill(base, 0, (uint16_t) (2 * N * N)); }
     static uint16_t bytes (void) { return 2 * N * N; }
 
-    Row operator[] (int x) const { return Row(base + 2 * (uint32_t) x * N); }
+    // (2 * N * N fits 16 bits for the game's 64x64: offsets stay 16-bit.)
+    Row operator[] (int x) const { return Row(base + (uint16_t) (2 * N * x)); }
 
 private:
     uint32_t base;

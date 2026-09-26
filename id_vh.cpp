@@ -26,7 +26,7 @@ static farptr FontFar (void)
 
 void VWB_DrawPropString(const char* string)
 {
-    static byte glyph[32*32];
+    static byte glyph[256];         // one glyph: at most 13 x 16 (font 1)
     farptr font = FontFar();
     int height = (int16_t) far_peekw(font);
     byte ch;
