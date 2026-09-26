@@ -24,10 +24,10 @@ import argparse
 import math
 import os
 import struct
-import subprocess
 import tempfile
 
-BIN = os.path.expanduser("~/opt/llvm-mos/bin")
+from sidpack import build_player, encode, psid
+
 PAL_CLOCK = 985248
 IMF_RATE = 700
 STARTMUSIC = 261                    # 3 * LASTSOUND (audiowl6.h)
@@ -182,134 +182,6 @@ def convert(imf):
     return records
 
 
-def encode(records):
-    out = bytearray()
-    for writes, delay in records:
-        if not writes:
-            writes = [(0x18, 0x0F)]     # (a record needs at least one write)
-        while delay > 0xFFFF:
-            out += bytes([len(writes)]) + bytes(b for w in writes for b in w) + struct.pack("<H", 0xFFFF)
-            delay -= 0xFFFF
-            writes = [(0x18, 0x0F)]
-        out += bytes([len(writes)]) + bytes(b for w in writes for b in w) + struct.pack("<H", delay)
-    return bytes(out + b"\x00")         # 0: the end (start again)
-
-
-PLAYER = r"""
-; imf2sid player. init: silence the three SIDs, start the CIA timer at the
-; IMF rate. play (every tick): when the wait is over, do the next record:
-;   count, count * (register offset from $D400, value), delay (16 bits).
-; A count of 0 starts the song again.
-        .section .text,"ax",@progbits
-        .globl init, play, data
-ptr = $fb
-init:
-        ldx #$5f
-        lda #0
-1:      sta $d400,x
-        dex
-        bpl 1b
-        lda #<(TIMER)
-        sta $dc04
-        lda #>(TIMER)
-        sta $dc05
-restart:
-        lda #<data
-        sta ptr
-        lda #>data
-        sta ptr+1
-        lda #0
-        sta wait
-        sta wait+1
-        rts
-play:
-        lda wait
-        ora wait+1
-        beq next
-        lda wait
-        bne 2f
-        dec wait+1
-2:      dec wait
-        rts
-next:
-        ldy #0
-        lda (ptr),y
-        bne 3f
-        jsr restart
-        jmp next
-3:      sta count
-        iny
-4:      lda (ptr),y
-        tax
-        iny
-        lda (ptr),y
-        iny
-        sta $d400,x
-        dec count
-        bne 4b
-        lda (ptr),y
-        sta wait
-        iny
-        lda (ptr),y
-        sta wait+1
-        iny
-        tya
-        clc
-        adc ptr
-        sta ptr
-        bcc 5f
-        inc ptr+1
-5:      lda wait
-        ora wait+1
-        beq next            ; no delay: the next record now
-        lda wait            ; delay d: the next record d ticks from now
-        bne 6f
-        dec wait+1
-6:      dec wait
-        rts
-count:  .byte 0
-wait:   .short 0
-data:
-"""
-
-
-def build_player(tmp):
-    timer = round(PAL_CLOCK / IMF_RATE) - 1
-    src = os.path.join(tmp, "player.s")
-    open(src, "w").write(f"TIMER = {timer}\n" + PLAYER)
-    open(os.path.join(tmp, "player.ld"), "w").write(
-        "SECTIONS { . = 0x1000; .text : { *(.text) } }\n")
-    obj, elf, bin_ = (os.path.join(tmp, n) for n in ("player.o", "player.elf", "player.bin"))
-    subprocess.check_call([f"{BIN}/mos-common-clang", "-c", "-o", obj, src])
-    subprocess.check_call([f"{BIN}/ld.lld", "-e", "init", "-T", os.path.join(tmp, "player.ld"), "-o", elf, obj])
-    subprocess.check_call([f"{BIN}/llvm-objcopy", "-O", "binary", elf, bin_])
-    syms = {}
-    for line in subprocess.check_output([f"{BIN}/llvm-nm", elf], text=True).splitlines():
-        p = line.split()
-        if len(p) == 3:
-            syms[p[2]] = int(p[0], 16)
-    code = open(bin_, "rb").read()
-    assert syms["data"] == 0x1000 + len(code), "data must follow the player"
-    return code, syms["init"], syms["play"]
-
-
-def psid(name, code, init, play, data, model):
-    hdr = bytearray(0x7C)
-    hdr[0:4] = b"PSID"
-    struct.pack_into(">HHHHHHHI", hdr, 4, 4, 0x7C, 0, init, play, 1, 1, 1)  # speed bit 0: CIA
-    hdr[0x16:0x16 + 32] = name.encode()[:32].ljust(32, b"\0")
-    hdr[0x36:0x36 + 32] = b"Bobby Prince (AdLib->SID preview)"[:32]
-    hdr[0x56:0x56 + 32] = b"1992 id Software".ljust(32, b"\0")
-    m = 1 if model == "6581" else 2
-    flags = (1 << 2) | (m << 4) | (m << 6) | (m << 8)     # PAL; SID models 1-3
-    struct.pack_into(">H", hdr, 0x76, flags)
-    hdr[0x7A] = 0x42                    # second SID at $D420
-    hdr[0x7B] = 0x44                    # third SID at $D440
-    body = struct.pack("<H", 0x1000) + code + data
-    assert 0x1000 + len(code) + len(data) < 0xD000, f"{name}: too big"
-    return bytes(hdr) + body
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("audiohed")
@@ -323,7 +195,7 @@ def main():
     off = struct.unpack(f"<{len(hed) // 4}I", hed)
     os.makedirs(args.outdir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        code, init, play = build_player(tmp)
+        code, init, play = build_player(tmp, IMF_RATE)
         for k, name in enumerate(SONGS):
             if args.song and name != args.song.upper():
                 continue
@@ -334,7 +206,7 @@ def main():
             imf = [struct.unpack_from("<BBH", au, a + 2 + i) for i in range(0, length - 3, 4)]
             data = encode(convert(imf))
             path = os.path.join(args.outdir, name + ".sid")
-            open(path, "wb").write(psid(name, code, init, play, data, args.model))
+            open(path, "wb").write(psid(name, "Bobby Prince (AdLib->SID preview)", code, init, play, data, args.model))
             secs = sum(d for _, _, d in imf) / IMF_RATE
             print(f"{path}: {secs:5.1f}s, {len(data)} bytes of SID data")
 

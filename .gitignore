@@ -234,3 +234,5 @@ mega65/testsd/mega65.d81
 # Game data (not ours to distribute)
 *.WL1
 mega65/*.ser
+# Wolfenstein 3-D music (MIDI), supplied locally
+mega65/*.mid
