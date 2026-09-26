@@ -8,14 +8,16 @@
 //   2  a tile at yspot (horizontal crossing): tilehit set
 //   3  the map's edge on a vertical crossing   (the original: HitHorizBorder)
 //   4  the map's edge on a horizontal crossing (the original: HitVertBorder)
-//   5  a spot beyond the map: the ray ends
+//   (the original's "spot beyond the map" cannot happen: a spot is only used
+//   inside the map)
 // entry: 0 starts a ray (the vertical loop's top), 1 goes on after a tile the
 // ray passes (the original's passvert), 2 the same for passhoriz.
 //
 // It works on the C globals (xtile, ytile, xtilestep, ytilestep,
-// xintercept, yintercept, xspot, yspot, tilehit), with the ray's steps in
-// m65_rxstep/m65_rystep and tilemap's and spotvis's addresses (chip RAM) in
-// m65_tm_base/m65_sv_base; the map is 64 x 64 (mapshift 6, maparea 4096).
+// xintercept, yintercept, tilehit; xspot and yspot are not kept, nothing
+// else uses them), with the ray's steps in m65_rxstep/m65_rystep and
+// tilemap's and spotvis's addresses (chip RAM, 256-byte aligned, the same
+// top byte) in m65_tm_base/m65_sv_base; the map is 64 x 64.
 // The original read the map and wrote spotvis through a function call each.
 
 #include <stdint.h>
@@ -29,12 +31,13 @@ __asm__(
     "  .section .zp.bss,\"aw\",@nobits\n"
     "m65_trp: .zero 4\n"                        // the 32-bit pointer into the map
     "  .section .bss.m65_trace_tmp,\"aw\",@nobits\n"
-    "m65_trw: .zero 2\n"                        // (a word being shifted)
+    "m65_trs: .zero 2\n"                        // the spot (xtile * 64 + y, or x * 64 + ytile)
 
     "  .section .text.m65_trace,\"ax\",@progbits\n"
     "  .globl m65_trace\n"
     "  .type m65_trace,@function\n"
     "m65_trace:\n"
+    "  ldx m65_tm_base+3\n stx m65_trp+3\n"    // (tilemap and spotvis: same top byte)
     "  cmp #1\n beq .Lpassvert\n"
     "  cmp #2\n bne .Lvtop\n jmp .Lpasshoriz\n"
 
@@ -55,22 +58,21 @@ __asm__(
     "  lda yintercept+2\n cmp #$40\n bcs .Lvedge\n"
     "  lda xtile+1\n bne .Lvedge\n"
     "  lda xtile\n cmp #64\n bcs .Lvedge\n"
-    "  lda xspot+1\n cmp #$10\n bcs .Lbeyond\n"   // xspot >= maparea
-    // tilehit = tilemap[xspot]
-    "  clc\n lda m65_tm_base\n adc xspot\n sta m65_trp\n"
-    "  lda m65_tm_base+1\n adc xspot+1\n sta m65_trp+1\n"
+    // inside the map: the spot is xtile * 64 + (yintercept >> 16), < 4096
+    "  lsr\n lsr\n sta m65_trs+1\n"
+    "  lda xtile\n asl\n asl\n asl\n asl\n asl\n asl\n ora yintercept+2\n sta m65_trs\n"
+    // tilehit = tilemap[spot] (the base's low byte is 0)
+    "  sta m65_trp\n"
+    "  clc\n lda m65_tm_base+1\n adc m65_trs+1\n sta m65_trp+1\n"
     "  lda m65_tm_base+2\n adc #0\n sta m65_trp+2\n"
-    "  lda m65_tm_base+3\n adc #0\n sta m65_trp+3\n"
-    "  ldz #0\n lda [m65_trp],z\n sta tilehit\n"
-    "  ldx #0\n stx tilehit+1\n"
-    "  cmp #0\n beq .Lpassvert\n"
+    "  ldz #0\n lda [m65_trp],z\n beq .Lpassvert\n"
+    "  sta tilehit\n ldx #0\n stx tilehit+1\n"
     "  lda #1\n rts\n"
     ".Lpassvert:\n"
-    // spotvis[xspot] = 1
-    "  clc\n lda m65_sv_base\n adc xspot\n sta m65_trp\n"
-    "  lda m65_sv_base+1\n adc xspot+1\n sta m65_trp+1\n"
+    // spotvis[spot] = 1
+    "  lda m65_trs\n sta m65_trp\n"
+    "  clc\n lda m65_sv_base+1\n adc m65_trs+1\n sta m65_trp+1\n"
     "  lda m65_sv_base+2\n adc #0\n sta m65_trp+2\n"
-    "  lda m65_sv_base+3\n adc #0\n sta m65_trp+3\n"
     "  ldz #0\n lda #1\n sta [m65_trp],z\n"
     // xtile += xtilestep; yintercept += ystep
     "  clc\n lda xtile\n adc xtilestep\n sta xtile\n"
@@ -79,16 +81,10 @@ __asm__(
     "  lda yintercept+1\n adc m65_rystep+1\n sta yintercept+1\n"
     "  lda yintercept+2\n adc m65_rystep+2\n sta yintercept+2\n"
     "  lda yintercept+3\n adc m65_rystep+3\n sta yintercept+3\n"
-    // xspot = (word)((xtile << 6) + ((uint32)yintercept >> 16))
-    "  lda xtile\n sta m65_trw\n lda xtile+1\n sta m65_trw+1\n"
-    "  asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n"
-    "  clc\n lda m65_trw\n adc yintercept+2\n sta xspot\n"
-    "  lda m65_trw+1\n adc yintercept+3\n sta xspot+1\n"
     "  jmp .Lvtop\n"
 
     ".Lvedge:\n lda #3\n rts\n"
     ".Lhedge:\n lda #4\n rts\n"
-    ".Lbeyond:\n lda #5\n rts\n"
 
     // ---- the horizontal-crossing loop ----
     ".Lhtop:\n"
@@ -107,22 +103,21 @@ __asm__(
     "  lda xintercept+2\n cmp #$40\n bcs .Lhedge\n"
     "  lda ytile+1\n bne .Lhedge\n"
     "  lda ytile\n cmp #64\n bcs .Lhedge\n"
-    "  lda yspot+1\n cmp #$10\n bcs .Lbeyond\n"   // yspot >= maparea
-    // tilehit = tilemap[yspot]
-    "  clc\n lda m65_tm_base\n adc yspot\n sta m65_trp\n"
-    "  lda m65_tm_base+1\n adc yspot+1\n sta m65_trp+1\n"
+    // inside the map: the spot is (xintercept >> 16) * 64 + ytile, < 4096
+    "  lda xintercept+2\n lsr\n lsr\n sta m65_trs+1\n"
+    "  lda xintercept+2\n asl\n asl\n asl\n asl\n asl\n asl\n ora ytile\n sta m65_trs\n"
+    // tilehit = tilemap[spot]
+    "  sta m65_trp\n"
+    "  clc\n lda m65_tm_base+1\n adc m65_trs+1\n sta m65_trp+1\n"
     "  lda m65_tm_base+2\n adc #0\n sta m65_trp+2\n"
-    "  lda m65_tm_base+3\n adc #0\n sta m65_trp+3\n"
-    "  ldz #0\n lda [m65_trp],z\n sta tilehit\n"
-    "  ldx #0\n stx tilehit+1\n"
-    "  cmp #0\n beq .Lpasshoriz\n"
+    "  ldz #0\n lda [m65_trp],z\n beq .Lpasshoriz\n"
+    "  sta tilehit\n ldx #0\n stx tilehit+1\n"
     "  lda #2\n rts\n"
     ".Lpasshoriz:\n"
-    // spotvis[yspot] = 1
-    "  clc\n lda m65_sv_base\n adc yspot\n sta m65_trp\n"
-    "  lda m65_sv_base+1\n adc yspot+1\n sta m65_trp+1\n"
+    // spotvis[spot] = 1
+    "  lda m65_trs\n sta m65_trp\n"
+    "  clc\n lda m65_sv_base+1\n adc m65_trs+1\n sta m65_trp+1\n"
     "  lda m65_sv_base+2\n adc #0\n sta m65_trp+2\n"
-    "  lda m65_sv_base+3\n adc #0\n sta m65_trp+3\n"
     "  ldz #0\n lda #1\n sta [m65_trp],z\n"
     // ytile += ytilestep; xintercept += xstep
     "  clc\n lda ytile\n adc ytilestep\n sta ytile\n"
@@ -131,10 +126,5 @@ __asm__(
     "  lda xintercept+1\n adc m65_rxstep+1\n sta xintercept+1\n"
     "  lda xintercept+2\n adc m65_rxstep+2\n sta xintercept+2\n"
     "  lda xintercept+3\n adc m65_rxstep+3\n sta xintercept+3\n"
-    // yspot = (word)((((uint32)xintercept >> 16) << 6) + ytile)
-    "  lda xintercept+2\n sta m65_trw\n lda xintercept+3\n sta m65_trw+1\n"
-    "  asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n asw m65_trw\n"
-    "  clc\n lda m65_trw\n adc ytile\n sta yspot\n"
-    "  lda m65_trw+1\n adc ytile+1\n sta yspot+1\n"
     "  jmp .Lhtop\n"
     "  .size m65_trace, . - m65_trace\n");

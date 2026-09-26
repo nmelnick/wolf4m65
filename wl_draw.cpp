@@ -1547,6 +1547,8 @@ void AsmRefresh()
 #ifdef MEGA65
     m65_tm_base = decltype(tilemap)::base;
     m65_sv_base = decltype(spotvis)::base;
+    if(((m65_tm_base | m65_sv_base) & 0xFF) || (m65_tm_base ^ m65_sv_base) >> 24)
+        Quit("m65_trace: tilemap/spotvis must be 256-byte aligned");
 #endif
 
     for(pixx=0;pixx<viewwidth;pixx++)
