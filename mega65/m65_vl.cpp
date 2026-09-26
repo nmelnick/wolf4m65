@@ -366,6 +366,19 @@ void VL_FarPlanarToScreen (farptr pic)
     VL_MemToScreenScaledCoord(pic, M65_SCREEN_W, M65_SCREEN_H, 0, 0);
 }
 
+void VL_FarLinearToScreen (farptr pic)
+{
+    SDL_Surface src;
+
+    memset(&src, 0, sizeof src);
+    src.format = &format8;
+    src.w = M65_SCREEN_W;
+    src.h = M65_SCREEN_H;
+    src.pitch = M65_SCREEN_W;
+    src.farpixels = pic.a;
+    SDL_BlitSurface(&src, NULL, curSurface, NULL);
+}
+
 void VL_LatchToScreenScaledCoord (SDL_Surface *source, int xsrc, int ysrc,
     int width, int height, int scxdest, int scydest)
 {

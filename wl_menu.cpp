@@ -3094,9 +3094,13 @@ UnCacheLump (int lumpstart, int lumpend)
 {
     int i;
 
+#ifdef MEGA65
+    (void) lumpstart; (void) lumpend;   // chunks stay cached (see id_ca.h)
+#else
     for (i = lumpstart; i <= lumpend; i++)
         if (grsegs[i])
             UNCACHEGRCHUNK (i);
+#endif
 }
 
 
@@ -3831,13 +3835,23 @@ void
 Message (const char *string)
 {
     int h = 0, w = 0, mw = 0, i, len = (int) strlen(string);
+#ifdef MEGA65
+    // The font is in far memory: measure through VW_MeasurePropString.
+    word fontw, fontheight;
+#else
     fontstruct *font;
+#endif
 
 
     CA_CacheGrChunk (STARTFONT + 1);
     fontnumber = 1;
+#ifdef MEGA65
+    VW_MeasurePropString ("", &fontw, &fontheight);
+    h = fontheight;
+#else
     font = (fontstruct *) grsegs[STARTFONT + fontnumber];
     h = font->height;
+#endif
     for (i = 0; i < len; i++)
     {
         if (string[i] == '\n')
@@ -3845,10 +3859,22 @@ Message (const char *string)
             if (w > mw)
                 mw = w;
             w = 0;
+#ifdef MEGA65
+            h += fontheight;
+#else
             h += font->height;
+#endif
         }
         else
+        {
+#ifdef MEGA65
+            char one[2] = { string[i], 0 };
+            VW_MeasurePropString (one, &fontw, &fontheight);
+            w += fontw;
+#else
             w += font->width[string[i]];
+#endif
+        }
     }
 
     if (w + 10 > mw)

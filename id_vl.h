@@ -83,6 +83,9 @@ void inline VL_MemToScreen (farptr source, int width, int height, int x, int y)
 // Draw a 320x200 planar picture (as stored for CA_CacheScreen) from far memory.
 void VL_FarPlanarToScreen (farptr pic);
 
+// Draw a 320x200 linear (row-major) picture from far memory.
+void VL_FarLinearToScreen (farptr pic);
+
 #else
 
 void VL_MungePic                (byte *source, unsigned width, unsigned height);

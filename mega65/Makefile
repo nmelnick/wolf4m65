@@ -47,11 +47,18 @@ SDIMG    = build/sd.img
 
 GAMEDATA = $(wildcard $(WOLFDIR)/*.WL1)
 
-$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA)
+# Files the MEGA65 build adds to the game data (see SignonScreen in wl_main).
+build/SIGNON.BIN: tools/extract_signon.py $(WOLFDIR)/signon.cpp
+	@mkdir -p build
+	python3 tools/extract_signon.py $(WOLFDIR)/signon.cpp $@
+
+PORTDATA = build/SIGNON.BIN
+
+$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
 	@mkdir -p build
 	cp --sparse=always $< $@
 	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) $(PORTDATA) s:
 
 dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
 	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c
@@ -146,7 +153,7 @@ test-title: titletest.prg $(SDIMG)
 	python3 tools/xrun.py 120 titletest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg titletest.prg -dumpmem titletest.mem -screenshot titletest.png
 	@tr -d '\r' < titletest.ser | grep -a -A1 '^QUIT:' || true
-	python3 tools/check_titletest.py titletest.mem build/huffref.h
+	python3 tools/check_titletest.py titletest.mem build/huffref.h build/SIGNON.BIN
 
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \

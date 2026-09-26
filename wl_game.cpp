@@ -970,7 +970,11 @@ void LatchNumberHERE (int x, int y, unsigned width, int32_t number)
 void ShowActStatus()
 {
     // Draw status bar without borders
+#ifdef MEGA65
+    farptr source = grsegs[STATUSBARPIC];
+#else
     byte *source = grsegs[STATUSBARPIC];
+#endif
     int	picnum = STATUSBARPIC - STARTPICS;
     int width = pictable[picnum].width;
     int height = pictable[picnum].height;
@@ -1168,7 +1172,11 @@ void PlayDemo (int demonumber)
 #endif
 
     CA_CacheGrChunk(dems[demonumber]);
+#ifdef MEGA65
+    demofar = grsegs[dems[demonumber]];
+#else
     demoptr = (int8_t *) grsegs[dems[demonumber]];
+#endif
 #else
     demoname[4] = '0'+demonumber;
     CA_LoadFile (demoname,&demobuffer);
@@ -1176,6 +1184,14 @@ void PlayDemo (int demonumber)
 #endif
 
     NewGame (1,0);
+#ifdef MEGA65
+    // Same layout: map byte, 16-bit length, one unused byte, then commands.
+    gamestate.mapon = far_peek(demofar);
+    gamestate.difficulty = gd_hard;
+    length = far_peekw(FAR_ADD(demofar, 1));
+    lastdemofar = FAR_ADD(demofar, length);
+    demofar = FAR_ADD(demofar, 4);
+#else
     gamestate.mapon = *demoptr++;
     gamestate.difficulty = gd_hard;
     length = READWORD(*(uint8_t **)&demoptr);
@@ -1183,6 +1199,7 @@ void PlayDemo (int demonumber)
     //       But T_DEM00 and T_DEM01 of Wolf have a 0xd8 as third length size...
     demoptr++;
     lastdemoptr = demoptr-4+length;
+#endif
 
     VW_FadeOut ();
 

@@ -72,6 +72,9 @@ boolean buttonheld[NUMBUTTONS];
 
 boolean demorecord, demoplayback;
 int8_t *demoptr, *lastdemoptr;
+#ifdef MEGA65
+farptr demofar, lastdemofar;    // demo playback reads straight from far memory
+#endif
 memptr demobuffer;
 
 //
@@ -430,18 +433,31 @@ void PollControls (void)
         //
         // read commands from demo buffer
         //
+#ifdef MEGA65
+        buttonbits = far_peek(demofar);
+#else
         buttonbits = *demoptr++;
+#endif
         for (i = 0; i < NUMBUTTONS; i++)
         {
             buttonstate[i] = buttonbits & 1;
             buttonbits >>= 1;
         }
 
+#ifdef MEGA65
+        controlx = (int8_t) far_peek(FAR_ADD(demofar, 1));
+        controly = (int8_t) far_peek(FAR_ADD(demofar, 2));
+        demofar = FAR_ADD(demofar, 3);
+
+        if (demofar.a == lastdemofar.a)
+            playstate = ex_completed;   // demo is done
+#else
         controlx = *demoptr++;
         controly = *demoptr++;
 
         if (demoptr == lastdemoptr)
             playstate = ex_completed;   // demo is done
+#endif
 
         controlx *= (int) tics;
         controly *= (int) tics;

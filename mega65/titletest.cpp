@@ -9,6 +9,8 @@
 #include "m65_debug.h"
 #include "m65_surf.h"
 #include "m65_video.h"
+#include "m65_posix.h"
+#include "m65_fartext.hpp"
 
 #include "build/huffref.h"
 
@@ -41,6 +43,8 @@ struct report {
     uint16_t sa, sb;            // checksum of the displayed title
     uint32_t ms_per_50_frames;  // SDL_GetTicks over 50 PAL frames (want ~1000)
     uint32_t fade_ms;           // how long the 30-step fade-in took
+    uint16_t signon_sa, signon_sb;  // checksum of the displayed sign-on screen
+    uint8_t  fartext_ok;        // FarText walk of the help article matches
 };
 
 static struct report rep;
@@ -88,6 +92,39 @@ int main (void)
     // open), and this test does not need them.
     CAL_SetupGrFile();
     VL_SetVGAPlaneMode();
+
+    // Sign-on screen, as SignonScreen does it on the MEGA65.
+    {
+        farptr pic = m65_file_far("signon.bin", NULL);
+        if (FAR_ISNULL(pic))
+            Quit("no signon.bin");
+        VL_FarLinearToScreen(pic);
+        VW_UpdateScreen();
+        a = b = 0;
+        for (y = 0; y < 200; y++) {
+            surf_read_row(screen, 0, y, row, 320);
+            for (x = 0; x < 320; x++) { a += row[x]; b += a; }
+        }
+        rep.signon_sa = a; rep.signon_sb = b;
+        a = b = 0;
+    }
+
+    // FarText: walk the help article like a char pointer.
+    {
+        FarText t, u;
+        int32_t k, len = ref[T_HELPART].explen;
+        uint16_t ta = 0, tb = 0;
+        char c9;
+        CA_CacheGrChunk(T_HELPART);
+        t = grsegs[T_HELPART];
+        c9 = *(t + 9);
+        for (k = 0; k < len; k++) { ta += (uint8_t) *t++; tb += ta; }
+        u = grsegs[T_HELPART];
+        u = u + 10;
+        --u;
+        rep.fartext_ok = ta == ref[T_HELPART].sa && tb == ref[T_HELPART].sb
+                      && *u == c9 && u < t && u != t;
+    }
 
     // As in the game: black, draw the title, show it, fade in.
     VL_FillPalette(0, 0, 0);

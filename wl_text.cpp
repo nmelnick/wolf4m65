@@ -55,7 +55,16 @@ static int numpages;
 
 static unsigned leftmargin[TEXTROWS];
 static unsigned rightmargin[TEXTROWS];
-static char*    text;
+#ifdef MEGA65
+// Articles stay in far memory (the help text alone is 13.5KB); FarText
+// behaves like a char pointer, so the layout code below is unchanged.
+#include "m65_fartext.hpp"
+typedef FarText textptr;
+#else
+typedef char *textptr;
+#endif
+
+static textptr  text;
 static unsigned rowon;
 
 static int     picx;
@@ -536,7 +545,7 @@ void BackPage (void)
 */
 void CacheLayoutGraphics (void)
 {
-    char    *bombpoint, *textstart;
+    textptr bombpoint, textstart;
     char    ch;
 
     textstart = text;
@@ -594,7 +603,7 @@ void CacheLayoutGraphics (void)
 #ifdef JAPAN
 void ShowArticle (int which)
 #else
-void ShowArticle (char *article)
+void ShowArticle (textptr article)
 #endif
 {
 #ifdef JAPAN
@@ -760,7 +769,7 @@ char helpfilename[13] = "HELPART.",
 void HelpScreens (void)
 {
     int     artnum;
-    char    *text;
+    textptr text;
 #ifndef ARTSEXTERN
     memptr  layout;
 #endif
@@ -775,7 +784,11 @@ void HelpScreens (void)
 #ifdef ARTSEXTERN
     artnum = helpextern;
     CA_CacheGrChunk (artnum);
+#ifdef MEGA65
+    text = grsegs[artnum];
+#else
     text = (char *)grsegs[artnum];
+#endif
 #else
     CA_LoadFile (helpfilename,&layout);
     text = (char *)layout;
@@ -802,7 +815,7 @@ void HelpScreens (void)
 void EndText (void)
 {
     int     artnum;
-    char    *text;
+    textptr text;
 #ifndef ARTSEXTERN
     memptr  layout;
 #endif
@@ -827,7 +840,11 @@ void EndText (void)
 #ifdef ARTSEXTERN
     artnum = endextern+gamestate.episode;
     CA_CacheGrChunk (artnum);
+#ifdef MEGA65
+    text = grsegs[artnum];
+#else
     text = (char *)grsegs[artnum];
+#endif
 #else
     endfilename[6] = '1'+gamestate.episode;
     CA_LoadFile (endfilename,&layout);

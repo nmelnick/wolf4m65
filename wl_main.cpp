@@ -7,6 +7,9 @@
 #endif
 
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_posix.h"
+#endif
 #pragma hdrstop
 #include "wl_atmos.h"
 #include <SDL_syswm.h>
@@ -24,7 +27,9 @@
 =============================================================================
 */
 
+#ifndef MEGA65
 extern byte signon[];
+#endif
 
 /*
 =============================================================================
@@ -834,8 +839,17 @@ void SignonScreen (void)                        // VGA version
 {
     VL_SetVGAPlaneMode ();
 
+#ifdef MEGA65
+    // The picture is a data file (extracted from signon.cpp at build time),
+    // loaded into attic RAM rather than compiled in.
+    farptr pic = m65_file_far ("signon.bin", NULL);
+    if (FAR_ISNULL(pic))
+        CA_CannotOpen ("signon.bin");
+    VL_FarLinearToScreen (pic);
+#else
     VL_MungePic (signon,320,200);
     VL_MemToScreen (signon,320,200,0,0);
+#endif
 }
 
 

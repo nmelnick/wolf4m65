@@ -1031,6 +1031,9 @@ extern  int         godmode;
 
 extern  boolean     demorecord,demoplayback;
 extern  int8_t      *demoptr, *lastdemoptr;
+#ifdef MEGA65
+extern  farptr      demofar, lastdemofar;
+#endif
 extern  memptr      demobuffer;
 
 //
