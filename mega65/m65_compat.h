@@ -37,4 +37,8 @@ char *strdup(const char *s);
 }
 #endif
 
+// Keeps a function out of its caller, e.g. so that the caller fits a code
+// overlay (the game sources define it empty elsewhere).
+#define M65_NOINLINE __attribute__((noinline))
+
 #endif

@@ -865,19 +865,19 @@ boolean TryMove (objtype *ob)
                     switch(pwalldir)
                     {
                         case di_north:
-                            if(ob->y-PUSHWALLMINDIST<=(pwally<<TILESHIFT)+((63-pwallpos)<<10))
+                            if(ob->y-PUSHWALLMINDIST<=((int32_t)pwally<<TILESHIFT)+((int32_t)(63-pwallpos)<<10))
                                 return false;
                             break;
                         case di_west:
-                            if(ob->x-PUSHWALLMINDIST<=(pwallx<<TILESHIFT)+((63-pwallpos)<<10))
+                            if(ob->x-PUSHWALLMINDIST<=((int32_t)pwallx<<TILESHIFT)+((int32_t)(63-pwallpos)<<10))
                                 return false;
                             break;
                         case di_east:
-                            if(ob->x+PUSHWALLMINDIST>=(pwallx<<TILESHIFT)+(pwallpos<<10))
+                            if(ob->x+PUSHWALLMINDIST>=((int32_t)pwallx<<TILESHIFT)+((int32_t)pwallpos<<10))
                                 return false;
                             break;
                         case di_south:
-                            if(ob->y+PUSHWALLMINDIST>=(pwally<<TILESHIFT)+(pwallpos<<10))
+                            if(ob->y+PUSHWALLMINDIST>=((int32_t)pwally<<TILESHIFT)+((int32_t)pwallpos<<10))
                                 return false;
                             break;
                     }

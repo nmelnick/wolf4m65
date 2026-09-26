@@ -41,7 +41,7 @@ wolf-objs: $(WOLFOBJS)
 
 GB        = build/game
 GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
-GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_surf m65_stdio m65_libm \
+GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_surf m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c
@@ -87,6 +87,14 @@ $(GB)/keys.stamp: FORCE
 $(GB)/m65_kbd.s: m65_kbd.c $(M65HDRS) $(GB)/keys.stamp
 	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(KEYS),'-DM65_KEYSCRIPT=$(KEYS)') -S -o $@ $<
 FORCE:
+
+# make FRAME=N: stop at frame N of the demo, for a frame comparison (see
+# m65_test.c and "Host reference" below).
+$(GB)/frame.stamp: FORCE
+	@mkdir -p $(GB)
+	@echo '$(FRAME)' | cmp -s - $@ || echo '$(FRAME)' > $@
+$(GB)/m65_test.s: m65_test.c $(M65HDRS) $(GB)/frame.stamp
+	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(FRAME),-DM65_FRAMEDUMP=$(FRAME)) -S -o $@ $<
 
 # Stage 1: a probe link of the game's code alone, to learn which library
 # members it pulls in. Stage 2: libsplit compiles those (bitcode) to
@@ -289,6 +297,43 @@ run-xemu: wolf.prg $(SDIMG)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
 	$(XEMU) -sdimg $(SDIMG) -prg wolf.prg
 
+# --- Host reference ---------------------------------------------------------
+# The original game code (no MEGA65 changes) built for the host against a
+# RAM-only SDL (host/host_sdl.cpp): silent, invisible, with a virtual clock.
+# Demos advance a fixed number of tics per frame, so demo frame N is the same
+# everywhere: make FRAME=N check-frame compares the MEGA65's frame N with
+# the host's, pixel for pixel.
+
+HB       = build/host
+HOSTCXX  = g++
+HOSTFLAGS = -O1 -g -w -fno-strict-aliasing -DVERSIONALREADYCHOSEN -DCARMACIZED \
+            -DUPLOAD -DNDEBUG -DFRAMEDUMP -Ihost
+HOSTSRCS = $(addprefix $(WOLFDIR)/,$(addsuffix .cpp,$(WOLFSRCS) id_vl signon)) \
+           m65_sd.cpp host/host_sdl.cpp host/host_frame.cpp
+
+$(HB)/wolf-host: $(HOSTSRCS) $(wildcard $(WOLFDIR)/*.h) SDL.h $(wildcard host/*.h)
+	@mkdir -p $(HB)
+	$(HOSTCXX) $(HOSTFLAGS) -o $@ $(HOSTSRCS) -lm
+
+# The host frames for FRAMES="n,m,..." in build/host/run (the game files
+# under the lower-case names the original code opens).
+host-frames: $(HB)/wolf-host
+	@mkdir -p $(HB)/run
+	@for f in $(GAMEDATA); do b=$$(basename $$f); ln -sf $(abspath $$f) $(HB)/run/$$(echo $$b | tr A-Z a-z); done
+	rm -rf $(HB)/run/.wolf4sdl $(HB)/run/frame_*.raw
+	cd $(HB)/run && HOME=$(abspath $(HB)/run) FRAMES='$(FRAMES)' ../wolf-host --res 320 200
+
+# The MEGA65's demo frame FRAME (it stops there), compared with the host's.
+# (SPACE at 6s answers the sign-on screen's "Press a key", as on the host.)
+check-frame: KEYS = {6000,0x3C},{6300,0x7F}
+check-frame: wolf.prg $(SDIMG) $(HB)/wolf-host
+	$(MAKE) host-frames FRAMES=$(FRAME)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
+	python3 tools/xrun.py 300 frame.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem frame.mem
+	python3 tools/check_frame.py frame.mem $(HB)/run/frame_$$(printf %04d $(FRAME)).raw \
+	  $(WOLFDIR)/wolfpal.inc frame_$(FRAME).png
+
 # Run a PRG headless for a while and save a screenshot: make shot PRG=vtest.prg
 shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
@@ -296,4 +341,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot run-wolf run-xemu wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
