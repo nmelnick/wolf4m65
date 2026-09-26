@@ -59,6 +59,32 @@ test-load: loadtest.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg loadtest.prg -dumpmem loadtest.mem
 	python3 tools/check_loadtest.py loadtest.mem $(WOLFDIR)/VSWAP.WL1
 
+# --- Overlay test ------------------------------------------------------------
+# ov1.c and ov2.c each become an overlay (--per-file); main.c and the runtime
+# stay resident. Checks thunks, pointers to statics, recursion, tail calls and
+# overlay <-> overlay <-> resident chains.
+
+OT = build/ovltest
+
+$(OT)/%.s: ovltest/%.c ovltest/ovltest.h
+	@mkdir -p $(OT)
+	$(CC) -Os -fno-lto -ffunction-sections -S -o $@ $<
+
+$(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s tools/ovlgen.py
+	python3 tools/ovlgen.py --out $(OT) --per-file $(OT)/ov1.s $(OT)/ov2.s
+
+ovltest.prg: $(OT)/ovl.ld ovltest/main.c ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c
+	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ ovltest/main.c \
+	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
+	  ovl/ovl_load.c m65_dos.c m65_video.c
+	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
+
+test-ovl: ovltest.prg $(SDIMG)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(OT)/OVLTEST.OVL s:
+	python3 tools/xrun.py 60 ovltest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg ovltest.prg -dumpmem ovltest.mem
+	python3 tools/check_ovltest.py ovltest.mem
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -79,4 +105,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl
