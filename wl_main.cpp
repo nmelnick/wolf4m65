@@ -1532,7 +1532,7 @@ void NewViewSize (int width)
     else if(viewsize == 20)
         SetViewSize(screenWidth, screenHeight - scaleFactor * STATUSLINES);
     else
-        SetViewSize(width*16*screenWidth/320, (unsigned) (width*16*HEIGHTRATIO*screenHeight/200));
+        SetViewSize((unsigned) ((int32_t) width*16*screenWidth/320), (unsigned) (width*16*HEIGHTRATIO*screenHeight/200));
 }
 
 

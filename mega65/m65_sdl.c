@@ -4,7 +4,7 @@
 // surfaces are created by the video layer (m65_vl.cpp); everything else is a
 // linear surface in the far heap.
 // Time: CIA2 timer A divides the CIA clock to 1ms ticks, timer B counts them.
-// Input: not implemented yet; no events, no mouse, no joysticks.
+// Input: the keyboard is in m65_kbd.c; no mouse, no joysticks.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -203,15 +203,7 @@ void SDL_Delay(Uint32 ms)
 // Input (not yet implemented)
 // ---------------------------------------------------------------------------
 
-SDLMod SDL_GetModState(void) { return KMOD_NONE; }
-int SDL_PollEvent(SDL_Event *e) { (void)e; return 0; }
-
-int SDL_WaitEvent(SDL_Event *e)
-{
-    (void)e;
-    for (;;)
-        ;
-}
+// (Keyboard events: m65_kbd.c.)
 
 Uint8 SDL_EventState(Uint8 type, int state) { (void)type; (void)state; return 0; }
 

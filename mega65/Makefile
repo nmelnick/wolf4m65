@@ -41,7 +41,7 @@ wolf-objs: $(WOLFOBJS)
 
 GB        = build/game
 GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
-GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_surf m65_stdio m65_libm \
+GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_surf m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c
@@ -50,7 +50,10 @@ RESIDENT  = $(GB)/ovl_rt.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 # make OVLTRACE=1: log every overlay call on the serial port (slow).
 OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
 comma = ,
-$(GB)/ovl_rt.o: ovl/ovl_rt.s
+$(GB)/ovltrace.stamp: FORCE
+	@mkdir -p $(GB)
+	@echo '$(OVLTRACE)' | cmp -s - $@ || echo '$(OVLTRACE)' > $@
+$(GB)/ovl_rt.o: ovl/ovl_rt.s $(GB)/ovltrace.stamp
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto $(OVLRTFLAGS) -o $@ $<
 
@@ -75,6 +78,15 @@ $(GB)/m65_%.s: m65_%.cpp $(M65HDRS) $(wildcard $(WOLFDIR)/*.h)
 $(GB)/m65_%.s: m65_%.c $(M65HDRS)
 	@mkdir -p $(GB)
 	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections -S -o $@ $<
+
+# make KEYS='{3000,0x3C},{3200,0x7F}': press keys at those times (ms) through
+# the virtual-key register (see m65_kbd.c). Rebuilt whenever KEYS changes.
+$(GB)/keys.stamp: FORCE
+	@mkdir -p $(GB)
+	@echo '$(KEYS)' | cmp -s - $@ || echo '$(KEYS)' > $@
+$(GB)/m65_kbd.s: m65_kbd.c $(M65HDRS) $(GB)/keys.stamp
+	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(KEYS),'-DM65_KEYSCRIPT=$(KEYS)') -S -o $@ $<
+FORCE:
 
 # Stage 1: a probe link of the game's code alone, to learn which library
 # members it pulls in. Stage 2: libsplit compiles those (bitcode) to
@@ -226,7 +238,7 @@ test-ca: catest.prg $(SDIMG)
 
 # --- Title test: id_ca + id_vh + the MEGA65 video layer ----------------------------
 
-M65VID = m65_sdl.c m65_surf.c
+M65VID = m65_sdl.c m65_kbd.c m65_surf.c
 
 titletest.prg: titletest.cpp build/huffref.h m65_vl.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_vh.cpp $(M65LIB) $(M65VID)
 	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -o $@ titletest.cpp m65_vl.cpp $(WOLFDIR)/id_ca.cpp \

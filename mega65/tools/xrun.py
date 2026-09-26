@@ -20,17 +20,27 @@ if os.path.exists(serial):
     os.remove(serial)
 start = time.time()
 seen = False
+want = marker.encode()
+pos, tail = 0, b""
 with open(os.devnull, "w") as null:
     proc = subprocess.Popen(cmd, stdout=null, stderr=null)
     while proc.poll() is None and time.time() - start < timeout:
+        # Only what is new since the last look (the file can get large),
+        # plus enough of the old to catch a marker split between reads.
+        new = b""
         try:
-            with open(serial, "r", errors="replace") as f:
-                if marker in f.read():
-                    seen = True
-                    break
+            with open(serial, "rb") as f:
+                f.seek(pos)
+                new = f.read(1 << 20)
+                pos = f.tell()
         except FileNotFoundError:
             pass
-        time.sleep(0.2)
+        if want in tail + new:
+            seen = True
+            break
+        tail = (tail + new)[-len(want):]
+        if not new:
+            time.sleep(0.2)
     if proc.poll() is None:
         proc.send_signal(signal.SIGTERM)
         try:
