@@ -316,6 +316,7 @@ int main(void)
             0xFFFFFFFFUL, 0xFFFFFFFEUL, 1000000UL, 0x12345678UL, 0xFFFF0000UL };
         uint16_t bad = 0, n = 0, k;
         uint8_t i, j;
+        put(0, "math unit mul/div: checking...");      // (overwritten when done)
         for (i = 0; i < sizeof edge / sizeof edge[0]; i++)
             for (j = 0; j < sizeof edge / sizeof edge[0]; j++, n++)
                 bad += check(edge[i], edge[j]);
@@ -323,7 +324,10 @@ int main(void)
         for (k = 0; k < 20000; k++, n++) {
             uint32_t a = rnd() >> (rnd() & 31), b = rnd() >> (rnd() & 31);
             bad += check(a, b);
+            if ((k & 1023) == 0)            // progress: a dot per 1024 pairs
+                put(31 + (k >> 10), ".");
         }
+        put(0, "                                                            ");
         line("math unit mul/div: wrong results", bad, "");
         line("  (pairs checked)", n, "");
     }
