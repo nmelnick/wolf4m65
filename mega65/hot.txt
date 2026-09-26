@@ -1,27 +1,29 @@
 # Overlay functions by time spent (make hotlist): ovlgen puts them
 # first into the overlays that run from chip RAM.
+# (hand-ordered at the top: the per-column path together in overlay 1,
+#  the sprite scaler with its caller)
 _Z10AsmRefreshv
 m65_trace
-wl_draw___ZL13ScaleShapeFariijjb
 _Z9ScalePostv
-__udivsi3
-m65_udivmod
-__umodsi3
-__modsi3
-__umodhi3
-__modhi3
-__divsi3
-_Z12HitHorizWallv
 _Z11HitVertWallv
-_Z11DrawScaledsv
-__udivhi3
-_Z10PM_GetPagei
-_Z7DoActorP9objstruct
+_Z12HitHorizWallv
 _Z10CalcHeightv
+_Z10PM_GetPagei
+m65_udivmod
+__udivsi3
+__divsi3
+__udivhi3
+__divhi3
+__umodsi3
+__umodhi3
+_Z11DrawScaledsv
+wl_draw___ZL13ScaleShapeFariijjb
+__modsi3
+__modhi3
+_Z7DoActorP9objstruct
 wl_play___ZL10BuildShiftii
 _Z11HitVertDoorv
 _Z12HitHorizDoorv
-__divhi3
 SDL_GetTicks
 _Z13TransformTileiiPsS_
 _Z6T_PathP9objstruct
