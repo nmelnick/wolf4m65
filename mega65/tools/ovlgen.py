@@ -272,10 +272,11 @@ REGION_ALIAS("c_writeable", ramhi)
 SECTIONS {{
     .basic_header : {{ *(.basic_header) }}
 
-    INCLUDE c.ld
+    /* Buffers the hypervisor reads must be below $8000. This rule must come
+     * before c.ld's, which would otherwise claim them for .bss (high). */
+    .lowbss (NOLOAD) : ALIGN(256) {{ *(.bss.lowbss.*) }} > ramlo
 
-    /* Buffers the hypervisor reads must be below $8000. */
-    .lowbss (NOLOAD) : ALIGN(256) {{ *(.lowbss .lowbss.*) }} > ramlo
+    INCLUDE c.ld
 }}
 
 INPUT(unmap-basic.o)

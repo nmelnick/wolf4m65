@@ -19,9 +19,10 @@
 
 // Filename buffer. Hyppo's setname only honours the pointer's high byte, so
 // the buffer must start on a page boundary, and it must be below $8000
-// (setname fails with error $10 otherwise). Linker scripts that put data high
-// must place .lowbss low.
-static char namebuf[16] __attribute__((aligned(256), section(".lowbss.namebuf")));
+// (setname fails with error $10 otherwise). The section is ordinary .bss to the
+// stock linker script; scripts that put data high must place .bss.lowbss.*
+// low (see tools/ovlgen.py).
+static char namebuf[16] __attribute__((aligned(256), section(".bss.lowbss.namebuf")));
 
 struct hres { uint8_t a, x, y, ok; };
 
