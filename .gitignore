@@ -221,3 +221,8 @@ mega65/*.o
 mega65/*.png
 mega65/*.mem
 mega65/obj/
+mega65/proto/*.prg
+mega65/proto/*.elf
+mega65/proto/*.o
+mega65/proto/*.png
+mega65/proto/*.mem
