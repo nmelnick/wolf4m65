@@ -98,6 +98,20 @@ build/hosttest/%.sim: build/hosttest/%.cpp
 test-host: build/hosttest/shifttest.sim
 	mos-sim build/hosttest/shifttest.sim
 
+# --- Far memory / Huffman test ------------------------------------------------
+
+build/huffref.h: tools/gen_huffref.py $(GAMEDATA)
+	@mkdir -p build
+	python3 tools/gen_huffref.py $@
+
+hufftest.prg: hufftest.c build/huffref.h m65_huff.c m65_huff.h m65_far.c m65_far.h m65_dos.c m65_video.c
+	$(CC) $(CFLAGS) -o $@ hufftest.c m65_huff.c m65_far.c m65_dos.c m65_video.c
+
+test-huff: hufftest.prg $(SDIMG)
+	python3 tools/xrun.py 600 hufftest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg hufftest.prg -dumpmem hufftest.mem
+	python3 tools/check_hufftest.py hufftest.mem build/huffref.h
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -118,4 +132,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host
+.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff
