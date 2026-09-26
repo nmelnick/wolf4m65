@@ -4,12 +4,13 @@ import struct
 import sys
 
 mem = open(sys.argv[1], "rb").read()
-fmt = "<BbHHHHHHiHB"
-magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur = \
+fmt = "<BbHHHHHHiHBBHH"
+magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur, layout_ok, rodata_at, objlist_at = \
     struct.unpack(fmt, mem[0x50000:0x50000 + struct.calcsize(fmt)])
 
 checks = [
     ("test ran to the end", magic == 0xEE),
+    (f"layout: rodata at ${rodata_at:04X} (lowmem), objlist at ${objlist_at:04X} (high, zeroed)", layout_ok == 1),
     ("overlays loaded", load_rc == 0),
     ("sq_ptr(7) == 49          (pointer to static overlay fn)", sq7 == 49),
     ("add3(1,2,3) == 6         (args in rc registers)", add3 == 6),

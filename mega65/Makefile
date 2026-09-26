@@ -89,10 +89,10 @@ $(OT)/%.s: ovltest/%.c ovltest/ovltest.h
 $(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s tools/ovlgen.py
 	python3 tools/ovlgen.py --out $(OT) --per-file $(OT)/ov1.s $(OT)/ov2.s
 
-ovltest.prg: $(OT)/ovl.ld ovltest/main.c ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c
+ovltest.prg: $(OT)/ovl.ld ovltest/main.c ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
 	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ ovltest/main.c \
 	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
-	  ovl/ovl_load.c m65_dos.c m65_video.c
+	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
 
 test-ovl: ovltest.prg $(SDIMG)
