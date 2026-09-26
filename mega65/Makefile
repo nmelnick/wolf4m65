@@ -47,9 +47,12 @@ GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c
 RESIDENT  = $(GB)/ovl_rt.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 
+# make OVLTRACE=1: log every overlay call on the serial port (slow).
+OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
+comma = ,
 $(GB)/ovl_rt.o: ovl/ovl_rt.s
 	@mkdir -p $(GB)
-	$(CC) -c -fno-lto -o $@ $<
+	$(CC) -c -fno-lto $(OVLRTFLAGS) -o $@ $<
 
 $(GB)/res_%.o: %.c $(M65HDRS)
 	@mkdir -p $(GB)
@@ -259,6 +262,15 @@ hello.prg: hello.c
 vtest.prg: vtest.c m65_video.c m65_video_init.c m65_video.h
 	$(CC) $(CFLAGS) -o $@ vtest.c m65_video.c m65_video_init.c
 
+# Run the whole game headless for RUNSECS seconds; keeps the debug serial
+# output (wolf.ser), a memory dump and a screenshot of where it got to.
+RUNSECS ?= 60
+run-wolf: wolf.prg $(SDIMG)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GB)/WOLF.OVL $(GB)/WOLF.DAT s:
+	-python3 tools/xrun.py $(RUNSECS) wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
+	@tr -d '\r' < wolf.ser | tail -20
+
 # Run a PRG headless for a while and save a screenshot: make shot PRG=vtest.prg
 shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
@@ -266,4 +278,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot run-wolf wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

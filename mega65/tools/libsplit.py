@@ -37,7 +37,7 @@ def nm(obj):
         p = line.split()
         if len(p) == 2 and p[0] == "U":
             undefined.add(p[1])
-        elif len(p) == 3 and p[1] in "TDBRtdbrV":
+        elif len(p) == 3 and p[1] in "TDBRWVtdbrv":   # (W: weak, e.g. strlen)
             defined.add(p[2])
     return defined, undefined
 

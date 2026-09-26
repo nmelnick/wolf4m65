@@ -71,7 +71,13 @@ static int32_t bufferseg[BUFFERSIZE/4];
 int     mapon;
 
 mapptr  mapsegs[MAPPLANES];
+#ifdef MEGA65
+// Where each map's header is in GAMEMAPS (which stays in attic RAM): 4 bytes
+// per map rather than a 38-byte copy on the near heap. -1: no map.
+static int32_t mapheaderpos[NUMMAPS];
+#else
 static maptype* mapheaderseg[NUMMAPS];
+#endif
 #ifdef MEGA65
 FarArray<farptr, NUMCHUNKS> grsegs;     // storage in chip RAM (CAL_SetupGrFile)
 static farptr grfar, audiofar, mapfar;  // VGAGRAPH, AUDIOT, GAMEMAPS in attic
@@ -652,6 +658,9 @@ void CAL_SetupMapFile (void)
     for (i=0;i<NUMMAPS;i++)
     {
         pos = tinf->headeroffsets[i];
+#ifdef MEGA65
+        mapheaderpos[i] = pos;
+#else
         if (pos<0)                          // $FFFFFFFF start is a sparse map
             continue;
 
@@ -659,6 +668,7 @@ void CAL_SetupMapFile (void)
         CHECKMALLOCRESULT(mapheaderseg[i]);
         lseek(maphandle,pos,SEEK_SET);
         read (maphandle,(memptr)mapheaderseg[i],sizeof(maptype));
+#endif
     }
 
     free(tinf);
@@ -1269,7 +1279,10 @@ void CA_CacheMap (int mapnum)
 
     for (plane = 0; plane<MAPPLANES; plane++)
     {
-        source = FAR_ADD(mapfar, mapheaderseg[mapnum]->planestart[plane]);
+        if (mapheaderpos[mapnum] < 0)
+            Quit("CA_CacheMap: no such map");
+        source = FAR_ADD(mapfar, far_peekl(FAR_ADD(mapfar, mapheaderpos[mapnum]
+                                           + offsetof(maptype, planestart) + plane*4)));
 
         //
         // unhuffman, then unRLEW

@@ -36,10 +36,19 @@ __asm__(
     "    lda #'B'\n sta $d643\n clv\n"
     "    lda #'R'\n sta $d643\n clv\n"
     "    lda #'K'\n sta $d643\n clv\n"
+    "    lda #' '\n sta $d643\n clv\n"
+    // The return address pushed by BRK (the BRK's address + 2), in hex.
+    "    tsx\n"
+    "    lda $0103,x\n jsr m65_hex\n"
+    "    lda $0102,x\n jsr m65_hex\n"
     "    lda #13\n sta $d643\n clv\n"
     "    lda #10\n sta $d643\n clv\n"
     "1:  lda #2\n sta $d020\n"
-    "    jmp 1b\n");
+    "    jmp 1b\n"
+    "m65_hex:\n"
+    "    pha\n lsr\n lsr\n lsr\n lsr\n jsr 2f\n pla\n and #15\n"
+    "2:  cmp #10\n bcc 3f\n adc #6\n"
+    "3:  adc #'0'\n sta $d643\n clv\n rts\n");
 
 extern char m65_nmi[], m65_irq[];
 

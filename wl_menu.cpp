@@ -4017,7 +4017,8 @@ CheckForEpisodes (void)
     struct stat statbuf;
 
     // On Linux like systems, the configdir defaults to $HOME/.wolf4sdl
-#if !defined(_WIN32) && !defined(_arch_dreamcast)
+    // (on the MEGA65 everything is in the SD card's root directory: no configdir)
+#if !defined(_WIN32) && !defined(_arch_dreamcast) && !defined(MEGA65)
     if(configdir[0] == 0)
     {
         // Set config location to home directory for multi-user support

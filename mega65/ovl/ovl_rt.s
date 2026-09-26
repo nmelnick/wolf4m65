@@ -98,6 +98,23 @@ __ovl_call:
 	lda	(__ovl_p),y
 	sta	__ovl_tgt+1
 
+
+.ifdef OVL_TRACE
+	; Debug: log "<id> <target>" for every call on the serial port.
+	lda	__ovl_id
+	jsr	.Lhex
+	lda	#' '
+	sta	$d643
+	clv
+	lda	__ovl_tgt+1
+	jsr	.Lhex
+	lda	__ovl_tgt
+	jsr	.Lhex
+	lda	#10
+	sta	$d643
+	clv
+.endif
+
 	lda	__ovl_cur
 	cmp	__ovl_id
 	beq	.Lsame
@@ -123,3 +140,23 @@ __ovl_call:
 	lda	__ovl_sa
 .Lgo:
 	jmp	(__ovl_tgt)
+
+.ifdef OVL_TRACE
+.Lhex:
+	pha
+	lsr
+	lsr
+	lsr
+	lsr
+	jsr	.Lnib
+	pla
+	and	#15
+.Lnib:
+	cmp	#10
+	bcc	1f
+	adc	#6
+1:	adc	#'0'
+	sta	$d643
+	clv
+	rts
+.endif
