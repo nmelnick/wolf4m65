@@ -46,7 +46,7 @@ GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_trace m65
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
-RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_draw.o $(GB)/m65_music.o $(GB)/m65_sfx.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
+RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_draw.o $(GB)/m65_music.o $(GB)/m65_sfx.o $(GB)/m65_sidfx.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 
 # make OVLTRACE=1: log every overlay call on the serial port (slow).
 OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
@@ -54,6 +54,10 @@ comma = ,
 $(GB)/ovltrace.stamp: FORCE
 	@mkdir -p $(GB)
 	@echo '$(OVLTRACE)' | cmp -s - $@ || echo '$(OVLTRACE)' > $@
+$(GB)/m65_sidfx.o: m65_sidfx.s
+	@mkdir -p $(GB)
+	$(CC) -c -fno-lto -o $@ $<
+
 $(GB)/m65_sfx.o: m65_sfx.s
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto -o $@ $<
@@ -181,8 +185,15 @@ build/MUSIC.DAT: tools/midi2sid.py tools/sidpack.py $(if $(MIDINEWER),FORCE)
 	@mkdir -p build
 	python3 tools/midi2sid.py --game $@ .
 
+# The AdLib sound effects for the fourth SID, from the game data (like the
+# music: built from the user's files, not to be passed on).
+build/SFX.DAT: tools/adlib2sid.py tools/imf2sid.py $(WOLFDIR)/AUDIOHED.WL1 $(WOLFDIR)/AUDIOT.WL1
+	@mkdir -p build/sid
+	python3 tools/adlib2sid.py $(WOLFDIR)/AUDIOHED.WL1 $(WOLFDIR)/AUDIOT.WL1 $@ \
+	  --preview build/sid/SFX_PREVIEW.sid --model $(SIDMODEL)
+
 # What the game loads besides the game data (copied onto the SD card).
-GAMEFILES = $(GB)/WOLF.OVL $(GB)/WOLF.DAT $(PORTDATA) $(MUSICDATA)
+GAMEFILES = $(GB)/WOLF.OVL $(GB)/WOLF.DAT $(PORTDATA) $(MUSICDATA) build/SFX.DAT
 
 $(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
 	@mkdir -p build
@@ -333,7 +344,7 @@ vtest.prg: vtest.c m65_video.c m65_video_init.c m65_video.h
 # Run the whole game headless for RUNSECS seconds; keeps the debug serial
 # output (wolf.ser), a memory dump and a screenshot of where it got to.
 RUNSECS ?= 60
-run-wolf: wolf.prg $(SDIMG) $(MUSICDATA)
+run-wolf: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
 	-python3 tools/xrun.py $(RUNSECS) wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
@@ -344,7 +355,7 @@ run-wolf: wolf.prg $(SDIMG) $(MUSICDATA)
 # SD card: WOLF3D.D81 (a disk image holding the program, WOLF) and the files
 # the game loads itself (see README.md).
 SDCARD = build/sdcard
-sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA)
+sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA) build/SFX.DAT
 	rm -rf $(SDCARD)
 	mkdir -p $(SDCARD)
 	cp $(GAMEFILES) $(GAMEDATA) $(SDCARD)/
@@ -373,7 +384,7 @@ fps: run-wolf
 profile: KEYS = {6000,0x3C},{6300,0x7F}
 profile: PROFILE = 1
 profile: FRAME ?= 60
-profile: wolf.prg $(SDIMG) $(MUSICDATA)
+profile: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
 	python3 tools/xrun.py 300 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem
@@ -386,7 +397,7 @@ hotlist: profile
 
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
-run-xemu: wolf.prg $(SDIMG) $(MUSICDATA)
+run-xemu: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
 	$(XEMU) -sdimg $(SDIMG) -prg wolf.prg
 
@@ -432,7 +443,7 @@ host-frames: $(HB)/wolf-host
 # The MEGA65's demo frame FRAME (it stops there), compared with the host's.
 # (SPACE at 6s answers the sign-on screen's "Press a key", as on the host.)
 check-frame: KEYS = {6000,0x3C},{6300,0x7F}
-check-frame: wolf.prg $(SDIMG) $(MUSICDATA) $(HB)/wolf-host
+check-frame: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT $(HB)/wolf-host
 	$(MAKE) host-frames FRAMES=$(FRAME)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
 	python3 tools/xrun.py 300 frame.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \

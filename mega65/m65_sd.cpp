@@ -10,7 +10,10 @@
 // Sound effects: the digitized sounds (VSWAP's sound pages: gunfire, enemy
 // calls, doors...) play on the four audio DMA channels, streamed from attic
 // RAM by m65_sfx.s (the same timer interrupt). The sounds that only exist as
-// AdLib effects (item pickups and the like) are silent for now.
+// AdLib effects (item pickups, weapon select and the like) are converted for
+// a SID by the build (tools/adlib2sid.py: SFX.DAT, from the user's own
+// AUDIOT) and play on the fourth SID (m65_sidfx.s), one at a time with the
+// original's priorities, as on the AdLib.
 
 #include "../wl_def.h"
 #include "SDL_mixer.h"      // MIX_CHANNELS
@@ -35,6 +38,10 @@ extern "C" {
     extern uint16_t m65_mus_wait;
     extern uint8_t m65_mus_on;
     extern char m65_music_irq[];
+    // The AdLib effects on the fourth SID (m65_sidfx.s).
+    extern uint32_t m65_sidfx_ptr;
+    extern uint16_t m65_sidfx_left;
+    extern uint8_t m65_sidfx_acc, m65_sidfx_on, m65_sidfx_gate, m65_sidfx_wave;
     // The sound effect streamer (m65_sfx.s).
     extern uint8_t m65_sfx_state[4];
     extern uint32_t m65_sfx_src[4];
@@ -73,6 +80,12 @@ static boolean  nextpositioned;
 
 static farptr   musicfile;              // MUSIC.DAT in attic RAM
 static uint8_t  numsongs;
+static boolean  havemusic;
+static farptr   sfxfile;                // SFX.DAT in attic RAM (the AdLib effects)
+static boolean  havesfx;
+static uint16_t sidfxpriority;          // the AdLib effect playing's
+static int      sidfxsound;
+#define SIDFX(reg) SID(0x60 + (reg))    // the fourth SID, voice 1
 
 // Gates and waveforms off (the voices fall silent), full volume, no filter.
 static void SID_Silence (void)
@@ -157,17 +170,25 @@ void SD_Startup (void)
 
     // MUSIC.DAT: "WMUS", version 1, song count, ticks per second, offsets.
     musicfile = m65_file_far("music.dat", &size);
-    AdLibPresent = !FAR_ISNULL(musicfile) && size >= 8
+    havemusic = !FAR_ISNULL(musicfile) && size >= 8
         && far_peekl(musicfile) == 0x53554D57UL          // "WMUS"
         && far_peek(FAR_ADD(musicfile, 4)) == 1;
-    if (AdLibPresent)
-    {
+    if (havemusic)
         numsongs = far_peek(FAR_ADD(musicfile, 5));
-        SIDMODE = (SIDMODE & 0x10) | 0x0F;  // 8580 sound (as the previews)
-        for (i = 0; i < 0x60; i++)
-            SID(i) = 0;
-        SID_Silence();
-    }
+    // SFX.DAT: "WSFX", version 2, sound count, tick rate, then 13 bytes per
+    // sound (offset, ticks, priority, control, AD, SR, pulse width).
+    sfxfile = m65_file_far("sfx.dat", &size);
+    havesfx = !FAR_ISNULL(sfxfile) && size >= 8
+        && far_peekl(sfxfile) == 0x58465357UL            // "WSFX"
+        && far_peek(FAR_ADD(sfxfile, 4)) == 2;
+    AdLibPresent = havemusic || havesfx;
+
+    SIDMODE = (SIDMODE & 0x10) | 0x0F;  // 8580 sound (as the previews)
+    for (i = 0; i < 0x80; i++)          // all four SIDs quiet
+        SID(i) = 0;
+    SID_Silence();
+    SID(0x78) = 0x0F;                   // (the fourth's volume)
+    m65_sidfx_on = 0;
 
     // The digitized sounds: the list is VSWAP's last page, (start page,
     // length) pairs, as the original SDL_SetupDigi reads it.
@@ -208,7 +229,7 @@ void SD_Shutdown (void)
 // record boundary: an offset from SD_MusicOff.
 static void StartSong (int song, uint16_t offs)
 {
-    if (!AdLibPresent || song < 0 || song >= numsongs)
+    if (!havemusic || song < 0 || song >= numsongs)
         return;
     uint32_t pos = far_peekl(FAR_ADD(musicfile, 8 + 4 * song));
     if (!pos)
@@ -238,7 +259,7 @@ void SD_ContinueMusic (int chunk, int startoffs)
 
 void SD_MusicOn (void)
 {
-    if (AdLibPresent && m65_mus_start)
+    if (havemusic && m65_mus_start)
         m65_mus_on = 1;
 }
 
@@ -251,7 +272,7 @@ int SD_MusicOff (void)
     m65_mus_on = 0;
     offs = (uint16_t) (m65_mus_p - m65_mus_start);
     __asm__ volatile ("cli");
-    if (AdLibPresent)
+    if (havemusic)
         SID_Silence();
     return (int) offs;
 }
@@ -278,7 +299,7 @@ boolean SD_SetMusicMode (SMMode mode)
             result = true;
             break;
         case smm_AdLib:
-            result = AdLibPresent;
+            result = havemusic;
             break;
     }
     if (result)
@@ -289,7 +310,7 @@ boolean SD_SetMusicMode (SMMode mode)
 // Sound effects: none yet, whichever mode is chosen.
 boolean SD_SetSoundMode (SDMode mode)
 {
-    if (mode == sdm_AdLib && !AdLibPresent)
+    if (mode == sdm_AdLib && !havesfx)
         return false;
     SoundMode = mode;
     return true;
@@ -371,6 +392,41 @@ int SD_PlayDigitized (word which, int leftpos, int rightpos)
     return ch;
 }
 
+// An AdLib effect on the fourth SID (SFX.DAT): one at a time, as on the
+// AdLib, and a lower priority does not cut a higher one off.
+static boolean SD_PlaySIDEffect (soundnames sound)
+{
+    if (SoundMode != sdm_AdLib || !havesfx)
+        return false;
+    farptr e = FAR_ADD(sfxfile, 8 + (uint16_t) sound * 13);
+    uint32_t off = far_peekl(e);
+    uint16_t ticks = far_peekw(FAR_ADD(e, 4)), prio = far_peekw(FAR_ADD(e, 6));
+    if (!off || !ticks)
+        return false;
+    if (m65_sidfx_on && prio < sidfxpriority)
+        return false;
+    uint8_t wave = far_peek(FAR_ADD(e, 8));
+    uint16_t pw = far_peekw(FAR_ADD(e, 11));
+
+    __asm__ volatile ("sei");
+    m65_sidfx_on = 0;
+    SIDFX(4) = 0;                       // (gate off: the envelope starts afresh)
+    SIDFX(5) = far_peek(FAR_ADD(e, 9));
+    SIDFX(6) = far_peek(FAR_ADD(e, 10));
+    SIDFX(2) = (uint8_t) pw;
+    SIDFX(3) = (uint8_t) (pw >> 8);
+    m65_sidfx_ptr = sfxfile.a + off;
+    m65_sidfx_left = ticks;
+    m65_sidfx_acc = 60;                 // (the first tick on the next interrupt)
+    m65_sidfx_gate = 0;
+    m65_sidfx_wave = wave;
+    m65_sidfx_on = 1;
+    __asm__ volatile ("cli");
+    sidfxpriority = prio;
+    sidfxsound = sound;
+    return true;
+}
+
 boolean SD_PlaySound (soundnames sound)
 {
     int lp = nextleft, rp = nextright;
@@ -378,8 +434,10 @@ boolean SD_PlaySound (soundnames sound)
 
     nextleft = nextright = 0;
     nextpositioned = false;
-    if (sound < 0 || sound >= LASTSOUND || DigiMode == sds_Off || DigiMap[sound] == -1)
-        return false;                   // (AdLib-only effects: none yet)
+    if (sound < 0 || sound >= LASTSOUND)
+        return false;
+    if (DigiMode == sds_Off || DigiMap[sound] == -1)
+        return SD_PlaySIDEffect(sound);
     int ch = SD_PlayDigitized((word) DigiMap[sound], lp, rp);
     channelsound[ch] = sound;
     channelSoundPos[ch].valid = 0;      // (PlaySoundLocGlobal sets it for moving sounds)
@@ -402,6 +460,8 @@ void SD_StopDigitized (void)
 void SD_StopSound (void)
 {
     SD_StopDigitized();
+    m65_sidfx_on = 0;
+    SIDFX(4) = m65_sidfx_wave;          // (key off)
 }
 
 // The sound on a channel still playing, if any (the game waits on it).
@@ -409,6 +469,8 @@ word SD_SoundPlaying (void)
 {
     int i;
     uint32_t now = SDL_GetTicks();
+    if (m65_sidfx_on)
+        return (word) sidfxsound;
     for (i = 0; i < 4; i++)
         if (m65_sfx_state[i] && (int32_t) (channelend[i] - now) > 0)
             return (word) channelsound[i];

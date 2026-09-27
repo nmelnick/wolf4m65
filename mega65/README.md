@@ -2,10 +2,12 @@
 
 A port of Wolf4SDL to the MEGA65, built with llvm-mos. Work in progress:
 the shareware episode loads, the sign-on screen, title and demo run, and the
-3D view matches the original code pixel for pixel. The music plays on
-three SIDs (from the MIDI originals, see below); there are no sound effects
-yet, and the game is slow: about 3 frames per second in Xemu's timing (`make
-fps`; real hardware may differ, DMA especially).
+3D view is drawn with the MEGA65's DMA scaling (close to the original,
+not pixel-exact). The music plays on three SIDs (from the MIDI originals,
+see below); the digitized sound effects (gunfire, enemy calls, doors) play
+on the audio DMA channels, and the AdLib-only effects (item pickups and the
+like) on the fourth SID. It runs at about 8-10 frames per second (`make
+fps` measures the demo in Xemu, which is now close to the real machine).
 
 ## Running it on a MEGA65
 
@@ -19,7 +21,8 @@ sdcard` gathers them in `build/sdcard/`):
 | `WOLF.DAT` | the program's data |
 | `SIGNON.BIN`, `TABLES.BIN` | the sign-on screen and precomputed tables |
 | `AUDIOHED.WL1`, `AUDIOT.WL1`, `GAMEMAPS.WL1`, `MAPHEAD.WL1`, `VGADICT.WL1`, `VGAGRAPH.WL1`, `VGAHEAD.WL1`, `VSWAP.WL1` | the shareware game data (v1.4), not included: bring your own |
-| `MUSIC.DAT` | the music (optional: without it the game is silent), built from your own copy of the MIDI originals |
+| `MUSIC.DAT` | the music (optional: without it there is no music), built from your own copy of the MIDI originals |
+| `SFX.DAT` | the AdLib sound effects converted for a SID, built from your game data |
 
 Then, on the MEGA65:
 
@@ -70,6 +73,7 @@ Run them in `mega65/`.
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
 | `make test-host test-proxy test-ovl test-dos test-load test-huff test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |
+| `make build/SFX.DAT` | the AdLib sound effects for the fourth SID; also `build/sid/SFX_PREVIEW.sid`, every effect in turn (`vsid` it) |
 | `make sid-midi` | the MIDI originals (put the `.mid` files in `mega65/`) as 3-SID files (`build/sid-midi/`) |
 | `make build/MUSIC.DAT` | the game's music from the MIDI files (the targets above make it when they need it) |
 | `make clean` | remove what was built |

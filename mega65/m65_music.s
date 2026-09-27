@@ -46,6 +46,7 @@ m65_music_irq:
 	jmp	m65_irq
 1:	lda	$dc0d			; acknowledge the CIA
 	jsr	m65_sfx_refill		; sound effects (m65_sfx.s)
+	jsr	m65_sidfx_tick		; the AdLib effects on the fourth SID (m65_sidfx.s)
 	lda	m65_mus_on
 	beq	.Ldone
 	lda	m65_mus_wait
