@@ -374,9 +374,16 @@ int SD_PlayDigitized (word which, int leftpos, int rightpos)
     if (first < SFX_RINGSIZE)
         m65_dma_fill(ring + first, 0x80, SFX_RINGSIZE - first);
 
-    AUDIO_CH(ch, 1) = (uint8_t) ring;   // base, top, rate, volume
+    AUDIO_CH(ch, 1) = (uint8_t) ring;   // base, current, top, rate, volume
     AUDIO_CH(ch, 2) = (uint8_t) (ring >> 8);
     AUDIO_CH(ch, 3) = (uint8_t) (ring >> 16);
+    // The current address, too: enabling a channel does not reload it from
+    // the base (it only goes back there at the top). From power-on it is
+    // $050000 (our draw buffer: a burst of pixels as noise), later wherever
+    // the channel last stopped. Writing its top byte makes it take effect.
+    AUDIO_CH(ch, 0xA) = (uint8_t) ring;
+    AUDIO_CH(ch, 0xB) = (uint8_t) (ring >> 8);
+    AUDIO_CH(ch, 0xC) = (uint8_t) (ring >> 16);
     // (the top address is where the channel loops back, not played itself:
     // the ring's end, so that all 512 bytes play)
     AUDIO_CH(ch, 7) = (uint8_t) (ring + SFX_RINGSIZE);
