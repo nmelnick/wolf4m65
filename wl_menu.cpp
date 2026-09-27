@@ -1498,7 +1498,7 @@ CP_LoadGame (int quick)
     FILE *file;
     int which, exit = 0;
     char name[13];
-    char loadpath[300];
+    char loadpath[SAVEPATHLEN];
 
     strcpy (name, SaveName);
 
@@ -1690,7 +1690,7 @@ CP_SaveGame (int quick)
     int which, exit = 0;
     FILE *file;
     char name[13];
-    char savepath[300];
+    char savepath[SAVEPATHLEN];
     char input[32];
 
     strcpy (name, SaveName);
@@ -3171,7 +3171,7 @@ SetupControlPanel (void)
 void SetupSaveGames()
 {
     char name[13];
-    char savepath[300];
+    char savepath[SAVEPATHLEN];
 
     strcpy(name, SaveName);
     for(int i = 0; i < 10; i++)
@@ -3220,6 +3220,9 @@ CleanupControlPanel (void)
 #endif
 
     fontnumber = 0;
+#ifdef MEGA65
+    WriteConfig ();                     // (settings kept at once: no one quits a MEGA65)
+#endif
 }
 
 

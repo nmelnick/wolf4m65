@@ -42,7 +42,7 @@ wolf-objs: $(WOLFOBJS)
 
 GB        = build/game
 GAMECXX   = $(WOLFSRCS) m65_vl m65_sd
-GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_trace m65_surf m65_hwdiv m65_stdio m65_libm \
+GAMEC     = m65_posix m65_dosw m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_trace m65_surf m65_hwdiv m65_stdio m65_libm \
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
@@ -80,7 +80,7 @@ $(GB)/ovl_rt.o: ovl/ovl_rt.s $(GB)/ovltrace.stamp
 
 $(GB)/res_%.o: %.c $(M65HDRS)
 	@mkdir -p $(GB)
-	$(CC) -Os -fno-lto -Wall -I. -c -o $@ $<
+	$(CC) -Os -fno-lto -Wall -I. -DM65_RESIDENT -c -o $@ $<
 
 $(GB)/res_%.o: ovl/%.c
 	@mkdir -p $(GB)
@@ -196,11 +196,27 @@ build/SFX.DAT: tools/adlib2sid.py tools/imf2sid.py $(WOLFDIR)/AUDIOHED.WL1 $(WOL
 # What the game loads besides the game data (copied onto the SD card).
 GAMEFILES = $(GB)/WOLF.OVL $(GB)/WOLF.DAT $(PORTDATA) $(MUSICDATA) build/SFX.DAT
 
-$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA)
+# The save games and the config file: the game can only overwrite files, not
+# make them (m65_posix.c), so they go on the SD card empty, 32KB each (all
+# zeros: no save in it yet).
+SAVEFILES = $(foreach n,0 1 2 3 4 5 6 7 8 9,build/saves/SAVEGAM$(n).WL1) build/saves/CONFIG.WL1
+build/saves/%.WL1:
+	@mkdir -p build/saves
+	head -c 32768 /dev/zero > $@
+
+# The game's directory on the SD card (m65_posix.c: m65_dos_subdir).
+SDDIR = s:/WOLF4M65/
+
+# The test programs read from the root directory, the game from WOLF4M65.
+# (The test targets copy the empty save files over again each time, so that
+# runs do not depend on what a previous run saved; run-xemu keeps them.)
+$(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA) $(SAVEFILES)
 	@mkdir -p build
 	cp --sparse=always $< $@
 	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) $(PORTDATA) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mmd $(patsubst %/,%,$(SDDIR))
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEDATA) $(PORTDATA) $(SAVEFILES) $(SDDIR)
 
 # Hardware timing test (see hwtest.c): on the D81 as HWTEST.
 hwtest.prg: hwtest.c m65_video.c m65_video.h m65_math.c m65_hwdiv.c
@@ -329,6 +345,19 @@ test-proxy: proxytest.prg
 	  -prg proxytest.prg -dumpmem proxytest.mem
 	python3 tools/check_proxytest.py proxytest.mem
 
+# Writing (m65_dosw.c) and the WOLF4M65 directory: a 1024-byte TESTW.BIN is
+# overwritten there and read back.
+writetest.prg: writetest.c m65_dos.c m65_dosw.c m65_dos.h m65_video.c m65_video.h
+	$(CC) $(CFLAGS) -fno-lto -o $@ writetest.c m65_dos.c m65_dosw.c m65_video.c
+
+test-write: writetest.prg $(SDIMG)
+	head -c 1024 /dev/zero > build/TESTW.BIN
+	MTOOLSRC=$(abspath build/mtoolsrc) mmd s:/WOLF4M65 2>/dev/null || true
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o build/TESTW.BIN testsd/test.bin s:/WOLF4M65/
+	python3 tools/xrun.py 90 writetest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg writetest.prg -dumpmem writetest.mem
+	python3 tools/check_writetest.py writetest.mem
+
 test-dos: dostest.prg $(SDIMG)
 	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
@@ -346,7 +375,7 @@ vtest.prg: vtest.c m65_video.c m65_video_init.c m65_video.h
 # output (wolf.ser), a memory dump and a screenshot of where it got to.
 RUNSECS ?= 60
 run-wolf: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	-python3 tools/xrun.py $(RUNSECS) wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
 	@tr -d '\r' < wolf.ser | tail -20
@@ -356,19 +385,23 @@ run-wolf: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 # SD card: WOLF3D.D81 (a disk image holding the program, WOLF) and the files
 # the game loads itself (see README.md).
 SDCARD = build/sdcard
-sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA) build/SFX.DAT
+SAVENAMES = $(notdir $(SAVEFILES))
+sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA) build/SFX.DAT $(SAVEFILES)
 	rm -rf $(SDCARD)
-	mkdir -p $(SDCARD)
-	cp $(GAMEFILES) $(GAMEDATA) $(SDCARD)/
-	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF3D.D81 -write wolf.prg wolf \
+	mkdir -p $(SDCARD)/WOLF4M65
+	cp $(GAMEFILES) $(GAMEDATA) $(SAVEFILES) $(SDCARD)/WOLF4M65/
+	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF4M65/WOLF3D.D81 -write wolf.prg wolf \
 	  -write hwtest.prg hwtest
-	@echo; echo "Copy everything in $(SDCARD)/ to the SD card's root directory."; ls -l $(SDCARD)
+	@echo; echo "Copy the folder $(SDCARD)/WOLF4M65 to the SD card's root directory."
+	@echo "Updating? Leave out $(SAVENAMES): they hold your save games and settings."
+	@ls -l $(SDCARD)/WOLF4M65
 
 # build/wolf3d-mega65.zip: the same without the game data (*.WL1), for
 # passing around: whoever installs it adds their own copy of the data.
 dist: sdcard
 	rm -f build/wolf3d-mega65.zip
-	cd $(SDCARD) && zip -q ../wolf3d-mega65.zip WOLF3D.D81 WOLF.OVL WOLF.DAT SIGNON.BIN TABLES.BIN
+	cd $(SDCARD) && zip -q ../wolf3d-mega65.zip $(addprefix WOLF4M65/,WOLF3D.D81 WOLF.OVL WOLF.DAT \
+	  SIGNON.BIN TABLES.BIN $(SAVENAMES))
 	cp README.md build/README-mega65.md && cd build && zip -q wolf3d-mega65.zip README-mega65.md
 	@ls -l build/wolf3d-mega65.zip
 
@@ -386,7 +419,7 @@ profile: KEYS = {6000,0x3C},{6300,0x7F}
 profile: PROFILE = 1
 profile: FRAME ?= 60
 profile: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 300 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem
 	python3 tools/profile.py wolf.prg.elf profile.mem
@@ -396,7 +429,7 @@ profile: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 profile-load: KEYS = {6000,0x3C},{6300,0x7F}
 profile-load: PROFILE = all
 profile-load: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem -screenshot profile.png
 	python3 tools/profile.py wolf.prg.elf profile.mem 60
@@ -409,10 +442,24 @@ profile-load: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 profile-menu: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F}
 profile-menu: PROFILE = all
 profile-menu: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem -screenshot profile.png
 	python3 tools/profile.py wolf.prg.elf profile.mem 60
+
+# Saving and loading (m65_posix.c): a new game, ESC, down four times to
+# "Save Game", RETURN, RETURN for slot 0, the name "A", RETURN; then ESC
+# twice (the main menu's "quit?", answered no), down nine times (wrapping)
+# to "Load Game", RETURN, RETURN for slot 0. The serial log shows each file
+# written (SAVED) and each save read; tools/check_savetest.py checks those and
+# SAVEGAM0.WL1 on the SD image. (The game goes on: the run ends on its timer.)
+test-save: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F},{44000,0x47},{44300,0x7F},{47000,0x07},{47300,0x7F},{48000,0x07},{48300,0x7F},{49000,0x07},{49300,0x7F},{50000,0x07},{50300,0x7F},{52000,0x01},{52300,0x7F},{55000,0x01},{55300,0x7F},{57000,0x0A},{57300,0x7F},{58000,0x01},{58300,0x7F},{62000,0x47},{62300,0x7F},{66000,0x47},{66300,0x7F},{69000,0x07},{69300,0x7F},{70000,0x07},{70300,0x7F},{71000,0x07},{71300,0x7F},{72000,0x07},{72300,0x7F},{73000,0x07},{73300,0x7F},{74000,0x07},{74300,0x7F},{75000,0x07},{75300,0x7F},{76000,0x07},{76300,0x7F},{77000,0x07},{77300,0x7F},{80000,0x01},{80300,0x7F},{83000,0x01},{83300,0x7F}
+test-save: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+	-python3 tools/xrun.py 15 wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem wolf.mem -screenshot wolf.png
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(SDDIR)SAVEGAM0.WL1 build/SAVEGAM0.GOT
+	python3 tools/check_savetest.py wolf.ser build/SAVEGAM0.GOT
 
 # hot.txt from a profile of the first 1000 demo frames.
 hotlist: FRAME = 1000
@@ -422,7 +469,8 @@ hotlist: profile
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
 run-xemu: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SDDIR)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -D s $(SAVEFILES) $(SDDIR)
 	$(XEMU) -sdimg $(SDIMG) -prg wolf.prg
 
 # --- Music preview -------------------------------------------------------------
@@ -469,7 +517,7 @@ host-frames: $(HB)/wolf-host
 check-frame: KEYS = {6000,0x3C},{6300,0x7F}
 check-frame: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT $(HB)/wolf-host
 	$(MAKE) host-frames FRAMES=$(FRAME)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 300 frame.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem frame.mem
 	python3 tools/check_frame.py frame.mem $(HB)/run/frame_$$(printf %04d $(FRAME)).raw \
@@ -482,4 +530,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy

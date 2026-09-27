@@ -1,6 +1,6 @@
 // The stdio the game uses, without the KERNAL (gone after m65_takeover):
-//   - fopen/fread/fseek/ftell/fclose over the read-only file layer
-//     (m65_posix.c); opening for writing fails (saving is not supported yet)
+//   - fopen/fread/fwrite/fseek/ftell/fclose over the file layer
+//     (m65_posix.c: only save games and the config file can be written)
 //   - printf and friends print to the debug serial port: llvm-mos's printf
 //     calls __putchar for every character. There is no console input.
 
@@ -32,9 +32,14 @@ FILE *fopen(const char *name, const char *mode)
     FILE *f;
     int fd;
 
-    if (mode[0] != 'r' || mode[1] == '+' || (mode[1] && mode[2] == '+'))
+    if (mode[1] == '+' || (mode[1] && mode[2] == '+'))
         return NULL;
-    fd = open(name, O_RDONLY);
+    if (mode[0] == 'r')
+        fd = open(name, O_RDONLY);
+    else if (mode[0] == 'w')
+        fd = open(name, O_WRONLY | O_CREAT | O_TRUNC);
+    else
+        return NULL;
     if (fd < 0)
         return NULL;
     f = (FILE *)malloc(sizeof *f);
@@ -49,30 +54,41 @@ FILE *fopen(const char *name, const char *mode)
 
 int fclose(FILE *f)
 {
-    int r = close(f->fd);
+    int r;
+    if (!f)
+        return EOF;
+    r = close(f->fd);
     free(f);
     return r;
 }
 
 size_t fread(void *buf, size_t size, size_t n, FILE *f)
 {
-    size_t total = size * n, got;
-    if (!size)
+    size_t total = size * n;
+    int got;
+    if (!f || !size)
         return 0;
-    got = (size_t)read(f->fd, buf, total);
-    if (got < total)
+    got = read(f->fd, buf, total);
+    if (got < 0)
+        got = 0;
+    if ((size_t)got < total)
         f->eof = 1;
-    return got / size;
+    return (size_t)got / size;
 }
 
 size_t fwrite(const void *buf, size_t size, size_t n, FILE *f)
 {
-    (void)buf; (void)size; (void)n; (void)f;
-    return 0;
+    int put;
+    if (!f || !size)
+        return 0;
+    put = write(f->fd, buf, size * n);
+    return put < 0 ? 0 : (size_t)put / size;
 }
 
 int fseek(FILE *f, long offset, int whence)
 {
+    if (!f)
+        return -1;
     f->eof = 0;
     return lseek(f->fd, offset, whence) < 0 ? -1 : 0;
 }

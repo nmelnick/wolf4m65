@@ -942,6 +942,11 @@ extern  boolean  startgame;
 extern  char     str[80];
 extern  char     configdir[256];
 extern  char     configname[13];
+#ifdef MEGA65
+#define SAVEPATHLEN 13          // (no configdir: a path is an 8.3 name; the C stack is small)
+#else
+#define SAVEPATHLEN 300
+#endif
 
 //
 // Command line parameter variables
@@ -962,6 +967,7 @@ extern  boolean  param_ignorenumchunks;
 void            NewGame (int difficulty,int episode);
 void            CalcProjection (int32_t focal);
 void            NewViewSize (int width);
+void            WriteConfig (void);
 boolean         SetViewSize (unsigned width, unsigned height);
 boolean         LoadTheGame(FILE *file,int x,int y);
 boolean         SaveTheGame(FILE *file,int x,int y);

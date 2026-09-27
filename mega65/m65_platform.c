@@ -163,24 +163,39 @@ static void fail(const char *what, const char *file)
     *(volatile uint8_t *)0xD021 = 0;
     screen_puts(screen, linestep, 1, line1);
     screen_puts(screen, linestep, 2, line2);
-    screen_puts(screen, linestep, 4, "Copy WOLF.OVL, WOLF.DAT, SIGNON.BIN,");
-    screen_puts(screen, linestep, 5, "TABLES.BIN and the *.WL1 files to the SD card.");
+    screen_puts(screen, linestep, 4, "Copy the WOLF4M65 folder to the SD card,");
+    screen_puts(screen, linestep, 5, "with the game's *.WL1 files in it.");
     for (;;)
         *(volatile uint8_t *)0xD020 = 2;
 }
 
+#ifdef M65_RESIDENT
+// The game's directory on the SD card (m65_dos.c), used from start-up on,
+// before WOLF.DAT is loaded: so in plain .rodata, loaded with the PRG (named
+// .rodata.* sections are in .rodata_far, from WOLF.DAT: see ovlgen.py).
+__attribute__((section(".rodata"))) const char m65_dos_subdir[] = "WOLF4M65";
+#endif
+
 void m65_startup(const char *ovlfile, const char *datafile)
 {
     uint16_t size = (uint16_t)(uintptr_t)__m65_data_size;
+    uint16_t at = 0, got;
     int fd = -1;
 
     m65_takeover();
 
-    // .data comes from its own file (it is not in the PRG).
+    // .data comes from its own file (it is not in the PRG). (Sector by
+    // sector here: m65_dos_read is in .midtext, which this loads.)
     if (size) {
         if (m65_dos_init() != 0 || (fd = m65_dos_open(datafile)) < 0)
             fail("Cannot open the data file:", datafile);
-        if (m65_dos_read(fd, (uint32_t)(uintptr_t)__m65_data_start, size) != size)
+        while (at < size) {
+            got = m65_dos_read512(fd, (uint32_t)(uintptr_t)__m65_data_start + at);
+            if (got == 0 || got == M65_DOS_EOF)
+                break;
+            at += got;
+        }
+        if (at != size)
             fail("The data file does not match the program:", datafile);
         m65_dos_close(fd);
     }

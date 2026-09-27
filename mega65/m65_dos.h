@@ -5,7 +5,9 @@
 // success. Files are read through the SD sector buffer at $FFD6E00, so this
 // works whatever the CPU memory map looks like.
 //
-// Only the root directory is used. Names are 8.3, upper case.
+// Files are in the directory m65_dos_subdir names, if the program defines it
+// and it exists (the game: WOLF4M65), else in the root. Names are 8.3, upper
+// case.
 
 #ifndef M65_DOS_H
 #define M65_DOS_H
@@ -27,5 +29,10 @@ uint16_t m65_dos_read512(int fd, uint32_t dst);
 
 // Read `count` bytes into far memory in 512-byte pieces. Returns bytes read.
 uint32_t m65_dos_read(int fd, uint32_t dst, uint32_t count);
+
+// Overwrite the file's next 512-byte sector with `count` (<= 512) bytes from
+// the far address `src`, the rest of the sector zero (m65_dosw.c). Hyppo
+// cannot make a file longer: past its end this fails. Returns 0 on success.
+int m65_dos_write512(int fd, uint32_t src, uint16_t count);
 
 #endif

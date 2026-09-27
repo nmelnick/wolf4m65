@@ -1,7 +1,7 @@
 # Wolfenstein 3-D for the MEGA65
 
 A port of Wolf4SDL to the MEGA65, built with llvm-mos. Work in progress:
-the shareware episode loads, the sign-on screen, title and demo run, and the
+the shareware episode plays (with saving and loading), the sign-on screen, title and demo run, and the
 3D view is drawn with the MEGA65's DMA scaling (close to the original,
 not pixel-exact). The music plays on three SIDs (from the MIDI originals,
 see below); the digitized sound effects (gunfire, enemy calls, doors) play
@@ -11,8 +11,8 @@ fps` measures the demo in Xemu, which is now close to the real machine).
 
 ## Running it on a MEGA65
 
-Copy these files to the **root directory** of the MEGA65's SD card (`make
-sdcard` gathers them in `build/sdcard/`):
+Copy the folder `WOLF4M65` to the **root directory** of the MEGA65's SD card
+(`make sdcard` builds it in `build/sdcard/`). In it:
 
 | File | What it is |
 | --- | --- |
@@ -23,6 +23,14 @@ sdcard` gathers them in `build/sdcard/`):
 | `AUDIOHED.WL1`, `AUDIOT.WL1`, `GAMEMAPS.WL1`, `MAPHEAD.WL1`, `VGADICT.WL1`, `VGAGRAPH.WL1`, `VGAHEAD.WL1`, `VSWAP.WL1` | the shareware game data (v1.4), not included: bring your own |
 | `MUSIC.DAT` | the music (optional: without it there is no music), built from your own copy of the MIDI originals |
 | `SFX.DAT` | the AdLib sound effects converted for a SID, built from your game data |
+| `SAVEGAM0.WL1` ... `SAVEGAM9.WL1` | the ten save game slots (32KB each, empty to start with) |
+| `CONFIG.WL1` | settings, key setup and high scores (32KB, empty to start with) |
+
+The MEGA65 can overwrite files on the SD card but not create them, so the
+save game and settings files come empty, ready to be written. The settings
+are saved whenever you leave the menu and after a high score. **When
+updating to a newer build, leave out `SAVEGAM*.WL1` and `CONFIG.WL1`**, or
+your saves and settings are replaced by empty ones.
 
 Then, on the MEGA65:
 
@@ -31,13 +39,17 @@ Then, on the MEGA65:
    `WOLF3D.D81`, and press `F3` to resume.
 2. Type `RUN "WOLF"`.
 
-The game reads its files from the SD card's root directory, whichever disk
-image is mounted. If a file is missing, it says which one on the screen and
-stops with a red border.
+The game reads its files from the SD card's `WOLF4M65` directory (or from
+the root directory, if there is no `WOLF4M65`), whichever disk image is
+mounted. If a file is missing, it says which one on the screen and stops
+with a red border.
 
 Keys: cursor keys to move, CTRL to fire, ALT to strafe, SHIFT to run,
-SPACE to open doors, ESC for the menu, RETURN to choose. The number in the
-top left corner of the 3D view is the frame rate (a development aid).
+SPACE to open doors, ESC for the menu, RETURN to choose; or a joystick in
+either port. The function keys are the original's: SHIFT gives the even
+ones (F2 save, F3 load, F4 sound, F6 controls, F8 quick save, F9 quick
+load, F10 quit). The number in the top left corner of the 3D view is the
+frame rate (a development aid).
 
 ## Building
 
@@ -64,7 +76,7 @@ Run them in `mega65/`.
 | Command | What it does |
 | --- | --- |
 | `make wolf.prg` | build the game: `wolf.prg`, `build/game/WOLF.OVL`, `build/game/WOLF.DAT` |
-| `make sdcard` | everything for the SD card in `build/sdcard/`, with `WOLF3D.D81` |
+| `make sdcard` | the `WOLF4M65` folder for the SD card in `build/sdcard/`, with `WOLF3D.D81` |
 | `make dist` | `build/wolf3d-mega65.zip`: the same without the game data, plus this README |
 | `make run-xemu` | play it in Xemu (a window), on `build/sd.img` |
 | `make run-wolf` | run it headless for `RUNSECS` seconds (60); keeps `wolf.png` (screenshot) and `wolf.ser` (debug output) |
@@ -73,7 +85,8 @@ Run them in `mega65/`.
 | `make profile-load` | the same from start-up to the first demo frame (sign-on, title, fades, loading) |
 | `make profile-menu` | the same through the menus to the first frame of a new game |
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
-| `make test-host test-proxy test-ovl test-dos test-load test-huff test-ca test-title` | the other tests |
+| `make test-save` | save a game and load it back, in Xemu |
+| `make test-host test-proxy test-ovl test-dos test-write test-load test-huff test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |
 | `make build/SFX.DAT` | the AdLib sound effects for the fourth SID; also `build/sid/SFX_PREVIEW.sid`, every effect in turn (`vsid` it) |
 | `make sid-midi` | the MIDI originals (put the `.mid` files in `mega65/`) as 3-SID files (`build/sid-midi/`) |

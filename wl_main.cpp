@@ -132,7 +132,7 @@ void ReadConfig(void)
     SMMode  sm;
     SDSMode sds;
 
-    char configpath[300];
+    char configpath[SAVEPATHLEN];
 
 #ifdef _arch_dreamcast
     DC_LoadFromVMU(configname);
@@ -257,7 +257,7 @@ noconfig:
 
 void WriteConfig(void)
 {
-    char configpath[300];
+    char configpath[SAVEPATHLEN];
 
 #ifdef _arch_dreamcast
     fs_unlink(configname);
@@ -416,7 +416,7 @@ boolean SaveTheGame(FILE *file,int x,int y)
 {
 //    struct diskfree_t dfree;
 //    int32_t avail,size,checksum;
-    int checksum;
+    int32_t checksum;           // (as LoadTheGame's: an int is 16 bits on the MEGA65)
     objtype *ob;
     objtype nullobj;
     statobj_t nullstat;
