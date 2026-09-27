@@ -52,6 +52,10 @@ static const uint16_t keysyms[NCOLS * 8] = {
 };
 
 static uint8_t reported[NCOLS] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+// The MEGA65's function keys are F1/F2, F3/F4 ... F13/F14, the even one with
+// SHIFT: the keys pressed with SHIFT (a bit per matrix position, like
+// `reported`) report the even one, when pressed and again when let go.
+static uint8_t shiftedf[NCOLS];
 
 #ifdef M65_KEYSCRIPT
 static const struct { Uint32 ms; uint8_t scancode; } keyscript[] = { M65_KEYSCRIPT };
@@ -93,7 +97,8 @@ static void scan(uint8_t *now)
 
 int SDL_PollEvent(SDL_Event *e)
 {
-    uint8_t now[NCOLS], col, bit, diff;
+    uint8_t now[NCOLS], col, bit, diff, up;
+    uint16_t sym;
 
 #ifdef M65_KEYSCRIPT
     run_keyscript();
@@ -106,13 +111,23 @@ int SDL_PollEvent(SDL_Event *e)
         for (bit = 0; !(diff & (1 << bit)); bit++)
             ;
         reported[col] ^= 1 << bit;
-        if (!keysyms[col * 8 + bit])
+        sym = keysyms[col * 8 + bit];
+        if (!sym)
             continue;                       // (look again next time)
+        up = (now[col] & (1 << bit)) != 0;
+        if (!up && sym >= SDLK_F1 && sym <= SDLK_F11 && !((sym - SDLK_F1) & 1)
+            && SDL_GetModState() != KMOD_NONE)
+            shiftedf[col] |= 1 << bit;
+        if (shiftedf[col] & (1 << bit)) {
+            sym++;                          // F1 -> F2, F3 -> F4 ...
+            if (up)
+                shiftedf[col] &= ~(1 << bit);
+        }
         if (e) {
-            e->type = (now[col] & (1 << bit)) ? SDL_KEYUP : SDL_KEYDOWN;
+            e->type = up ? SDL_KEYUP : SDL_KEYDOWN;
             e->key.state = e->type == SDL_KEYDOWN;
             e->key.keysym.scancode = col * 8 + bit;
-            e->key.keysym.sym = (SDLKey)keysyms[col * 8 + bit];
+            e->key.keysym.sym = (SDLKey)sym;
             e->key.keysym.mod = SDL_GetModState();
             e->key.keysym.unicode = 0;
         }
