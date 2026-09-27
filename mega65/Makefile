@@ -382,25 +382,25 @@ run-wolf: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 	@tr -d '\r' < wolf.ser | tail -20
 
 # --- For the real machine --------------------------------------------------
-# build/sdcard/: everything that goes in the root directory of the MEGA65's
-# SD card: WOLF3D.D81 (a disk image holding the program, WOLF) and the files
-# the game loads itself (see README.md).
+# build/sdcard/: what goes in the root directory of the MEGA65's SD card:
+# WOLF3D.D81 (a disk image holding the program, WOLF), and the folder
+# WOLF4M65 with the files the game loads itself (see README.md).
 SDCARD = build/sdcard
 sdcard: wolf.prg hwtest.prg $(PORTDATA) $(MUSICDATA) build/SFX.DAT
 	rm -rf $(SDCARD)
 	mkdir -p $(SDCARD)/WOLF4M65
 	cp $(GAMEFILES) $(GAMEDATA) $(SDCARD)/WOLF4M65/
-	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF4M65/WOLF3D.D81 -write wolf.prg wolf \
+	c1541 -silent -format "wolfenstein 3d,w3" d81 $(SDCARD)/WOLF3D.D81 -write wolf.prg wolf \
 	  -write hwtest.prg hwtest
-	@echo; echo "Copy the folder $(SDCARD)/WOLF4M65 to the SD card's root directory."
+	@echo; echo "Copy WOLF3D.D81 and the folder WOLF4M65 from $(SDCARD)/ to the SD card's root directory."
 	@echo "(The game makes SAVES.DAT, the save games and settings, there itself.)"
-	@ls -l $(SDCARD)/WOLF4M65
+	@ls -l $(SDCARD) $(SDCARD)/WOLF4M65
 
 # build/wolf3d-mega65.zip: the same without the game data (*.WL1), for
 # passing around: whoever installs it adds their own copy of the data.
 dist: sdcard
 	rm -f build/wolf3d-mega65.zip
-	cd $(SDCARD) && zip -q ../wolf3d-mega65.zip $(addprefix WOLF4M65/,WOLF3D.D81 WOLF.OVL WOLF.DAT \
+	cd $(SDCARD) && zip -q ../wolf3d-mega65.zip WOLF3D.D81 $(addprefix WOLF4M65/,WOLF.OVL WOLF.DAT \
 	  SIGNON.BIN TABLES.BIN)
 	cp README.md build/README-mega65.md && cd build && zip -q wolf3d-mega65.zip README-mega65.md
 	@ls -l build/wolf3d-mega65.zip

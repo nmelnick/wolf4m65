@@ -11,12 +11,17 @@ fps` measures the demo in Xemu, which is now close to the real machine).
 
 ## Running it on a MEGA65
 
-Copy the folder `WOLF4M65` to the **root directory** of the MEGA65's SD card
-(`make sdcard` builds it in `build/sdcard/`). In it:
+Copy `WOLF3D.D81` and the folder `WOLF4M65` to the **root directory** of the
+MEGA65's SD card (`make sdcard` gathers them in `build/sdcard/`):
 
 | File | What it is |
 | --- | --- |
-| `WOLF3D.D81` | disk image with the program, `WOLF` |
+| `WOLF3D.D81` | disk image with the program, `WOLF` (in the root, like other MEGA65 programs) |
+
+and in `WOLF4M65`:
+
+| File | What it is |
+| --- | --- |
 | `WOLF.OVL` | the program's code overlays |
 | `WOLF.DAT` | the program's data |
 | `SIGNON.BIN`, `TABLES.BIN` | the sign-on screen and precomputed tables |
@@ -76,7 +81,7 @@ Run them in `mega65/`.
 | Command | What it does |
 | --- | --- |
 | `make wolf.prg` | build the game: `wolf.prg`, `build/game/WOLF.OVL`, `build/game/WOLF.DAT` |
-| `make sdcard` | the `WOLF4M65` folder for the SD card in `build/sdcard/`, with `WOLF3D.D81` |
+| `make sdcard` | `WOLF3D.D81` and the `WOLF4M65` folder for the SD card, in `build/sdcard/` |
 | `make dist` | `build/wolf3d-mega65.zip`: the same without the game data, plus this README |
 | `make run-xemu` | play it in Xemu (a window), on `build/sd.img` |
 | `make run-wolf` | run it headless for `RUNSECS` seconds (60); keeps `wolf.png` (screenshot) and `wolf.ser` (debug output) |
