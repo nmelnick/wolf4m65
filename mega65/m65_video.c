@@ -140,4 +140,63 @@ __asm__(
     "  lda #<m65_sjob\n sta $d705\n"               // and go
     "1: rts\n"
     "  .size m65_dma_scale, . - m65_dma_scale\n"
+
+    // m65_dma_col_setup(base, srcstep): base (A, X, __rc2, __rc3) and the
+    // source step (__rc4/5) for the m65_dma_segs calls that follow.
+    "  .section .bss.m65_colvars,\"aw\",@nobits\n"
+    "m65_colbase: .zero 2\n"
+    "m65_colbank: .zero 1\n"
+    "m65_colmb:   .zero 1\n"
+    "m65_colstep: .zero 2\n"
+    "  .section .text.m65_dma_col_setup,\"ax\",@progbits\n"
+    "  .globl m65_dma_col_setup\n"
+    "  .type m65_dma_col_setup,@function\n"
+    "m65_dma_col_setup:\n"
+    "  sta m65_colbase\n stx m65_colbase+1\n"
+    "  lda __rc2\n and #$0f\n sta m65_colbank\n"
+    "  lda __rc3\n asl\n asl\n asl\n asl\n sta __rc13\n"
+    "  lda __rc2\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_colmb\n"
+    "  lda __rc4\n sta m65_colstep\n lda __rc5\n sta m65_colstep+1\n"
+    "  rts\n"
+    "  .size m65_dma_col_setup, . - m65_dma_col_setup\n"
+
+    // m65_dma_segs(xoff, n): for k < n (__rc2), a scaled copy of
+    // m65_segcount[k] rows from m65_segsrc[k] to base + xoff (A/X) +
+    // m65_segtop[k] * 8, every 8th byte (one screen column's posts).
+    "  .section .text.m65_dma_segs,\"ax\",@progbits\n"
+    "  .globl m65_dma_segs\n"
+    "  .type m65_dma_segs,@function\n"
+    "m65_dma_segs:\n"
+    "  sta __rc6\n stx __rc7\n"
+    "  lda m65_colmb\n sta m65_sjob+4\n"          // (as m65_dma_scale may have
+    "  lda #8\n sta m65_sjob+6\n"                 //  changed them since)
+    "  lda m65_colstep\n sta m65_sjob+8\n"
+    "  lda m65_colstep+1\n sta m65_sjob+10\n"
+    "  lda #0\n sta m65_sjob+14\n"
+    "  ldy #0\n"
+    "2: cpy __rc2\n bcs 3f\n"
+    "  lda m65_segtop,y\n sta __rc8\n lda #0\n sta __rc9\n"
+    "  asl __rc8\n rol __rc9\n asl __rc8\n rol __rc9\n asl __rc8\n rol __rc9\n"
+    "  clc\n lda __rc8\n adc __rc6\n sta __rc8\n lda __rc9\n adc __rc7\n sta __rc9\n"
+    "  clc\n lda __rc8\n adc m65_colbase\n sta m65_sjob+18\n"
+    "  lda __rc9\n adc m65_colbase+1\n sta m65_sjob+19\n"
+    "  lda m65_colbank\n adc #0\n sta m65_sjob+20\n"
+    "  lda m65_segcount,y\n sta m65_sjob+13\n"
+    "  tya\n asl\n asl\n tax\n"
+    "  lda m65_segsrc,x\n sta m65_sjob+15\n"
+    "  lda m65_segsrc+1,x\n sta m65_sjob+16\n"
+    "  lda m65_segsrc+2,x\n and #$0f\n sta m65_sjob+17\n"
+    "  lda m65_segsrc+3,x\n asl\n asl\n asl\n asl\n sta __rc10\n"
+    "  lda m65_segsrc+2,x\n lsr\n lsr\n lsr\n lsr\n ora __rc10\n sta m65_sjob+2\n"
+    "  lda #1\n sta $d703\n"
+    "  lda #0\n sta $d702\n sta $d704\n"
+    "  lda #>m65_sjob\n sta $d701\n"
+    "  lda #<m65_sjob\n sta $d705\n"
+    "  iny\n bra 2b\n"
+    "3: rts\n"
+    "  .size m65_dma_segs, . - m65_dma_segs\n"
 );
+
+// A screen column's posts, for m65_dma_segs.
+uint8_t m65_segtop[M65_MAXSEGS], m65_segcount[M65_MAXSEGS];
+uint32_t m65_segsrc[M65_MAXSEGS];

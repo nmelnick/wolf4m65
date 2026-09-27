@@ -824,41 +824,49 @@ int CalcRotate (objtype *ob)
 // leftpix, rightpix, dataofs[], then posts and texels) is read in place from
 // far memory. Each post (run of opaque texels) of a texture column is drawn
 // with one DMA copy that scales it as it goes, per screen column the texture
-// column covers; the original's spans, approximately. pixcnt is 32-bit,
-// since i * pixheight overflows a 16-bit int for close sprites.
+// column covers; the original's spans, approximately. A texture column's
+// posts are worked out once (rows, clipped to the view), then each screen
+// column's copies issued by m65_dma_segs (mega65/m65_video.c).
 //
+
+// a * b on the math unit (16 x 16 -> 32 bits; __mulsi3 is 32 x 32, and a call).
+static inline uint32_t HwMul16 (uint16_t a, uint16_t b)
+{
+    volatile uint8_t *m = (volatile uint8_t *) 0xD770;
+    m[0] = (uint8_t) a; m[1] = (uint8_t) (a >> 8); m[2] = 0; m[3] = 0;
+    m[4] = (uint8_t) b; m[5] = (uint8_t) (b >> 8); m[6] = 0; m[7] = 0;
+    return *(volatile uint32_t *) 0xD778;
+}
+
 static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                            unsigned height, bool clipwalls)
 {
-    enum { MAXSEGS = 16 };
-    uint8_t segtop[MAXSEGS], segcount[MAXSEGS], nsegs, k;
-    uint32_t segsrc[MAXSEGS];
     farptr shape = PM_GetSprite(shapenum);
     farptr cmdptr, line;
-    uint32_t pixheight;
+    uint16_t pixheight;
     int32_t pixcnt;
     unsigned starty, endy, leftpix, rightpix;
     int actx, i, upperedge;
     int16_t newstart;
-    int r0, r1, top, bot, lpix, rpix;
-    uint16_t step;
+    int r0, r1, top, bot, lpix, rpix, x;
+    uint8_t nsegs;
 
-    pixheight = (uint32_t) scale * SPRITESCALEFACTOR;
+    pixheight = scale * SPRITESCALEFACTOR;
     actx = xcenter - scale;
     upperedge = viewheight / 2 - scale;
     // texels per row, 8.8 fixed point (a texel is pixheight/64 rows high)
-    step = DivApprox((uint32_t) 64 << 8, (uint16_t) pixheight);
+    m65_dma_col_setup(screenBuffer->farpixels, DivApprox((uint32_t) 64 << 8, pixheight));
 
     leftpix = far_peekw(shape);
     rightpix = far_peekw(FAR_ADD(shape, 2));
     cmdptr = FAR_ADD(shape, 4);                     // dataofs[0]
 
-    for(i=leftpix,pixcnt=(int32_t)i*pixheight,rpix=(pixcnt>>6)+actx;i<=(int)rightpix;i++,cmdptr=FAR_ADD(cmdptr,2))
+    for(i=leftpix,pixcnt=HwMul16(i,pixheight),rpix=(int)(pixcnt>>6)+actx;i<=(int)rightpix;i++,cmdptr=FAR_ADD(cmdptr,2))
     {
         lpix=rpix;
         if(lpix>=viewwidth) break;
         pixcnt+=pixheight;
-        rpix=(pixcnt>>6)+actx;
+        rpix=(int)(pixcnt>>6)+actx;
         if(lpix!=rpix && rpix>0)
         {
             if(lpix<0) lpix=0;
@@ -879,28 +887,29 @@ static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                 newstart = (int16_t) far_peekw(FAR_ADD(line, 2));
                 starty = far_peekw(FAR_ADD(line, 4)) >> 1;
                 line = FAR_ADD(line, 6);
-                r0 = (int) (((int32_t) starty * pixheight) >> 6) + upperedge;
-                r1 = (int) (((int32_t) endy * pixheight) >> 6) + upperedge;
+                r0 = (int) (HwMul16(starty, pixheight) >> 6) + upperedge;
+                r1 = (int) (HwMul16(endy, pixheight) >> 6) + upperedge;
                 top = r0 < 0 ? 0 : r0;
                 bot = r1 > viewheight ? viewheight : r1;
-                if(top < bot && nsegs < MAXSEGS)
+                if(top < bot && nsegs < M65_MAXSEGS)
                 {
-                    segtop[nsegs] = (uint8_t) top;
-                    segcount[nsegs] = (uint8_t) (bot - top);
-                    segsrc[nsegs] = shape.a + (int32_t) newstart + starty;
+                    m65_segtop[nsegs] = (uint8_t) (top + viewscreeny);
+                    m65_segcount[nsegs] = (uint8_t) (bot - top);
+                    m65_segsrc[nsegs] = shape.a + (int32_t) newstart + starty;
                     if(top != r0)       // (clipped at the top)
-                        segsrc[nsegs] += DivApprox((uint32_t) (top - r0) << 6, (uint16_t) pixheight);
+                        m65_segsrc[nsegs] += DivApprox((uint32_t) (top - r0) << 6, pixheight);
                     nsegs++;
                 }
             }
+            if(!nsegs)
+                continue;
 
             for(; lpix<rpix; lpix++)
             {
                 if(clipwalls && wallheight[lpix]>(int)height)
                     continue;
-                for(k = 0; k < nsegs; k++)
-                    m65_dma_scale(ViewAddr(lpix, segtop[k]), segsrc[k], segcount[k],
-                                  step, M65_COLUMN_STEP);
+                x = lpix + viewscreenx;
+                m65_dma_segs(stripofs[x >> 3] + (x & 7), nsegs);
             }
         }
     }

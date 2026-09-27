@@ -52,6 +52,16 @@ void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count);
 void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip);
 void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip);
 // Scaled copy: the source steps by srcstep (8.8 fixed point) per byte copied.
+// The sprite scaler's DMA jobs: m65_dma_col_setup sets the buffer's base and
+// the source step, then each m65_dma_segs(xoff, n) copies posts 0..n-1
+// (m65_segsrc[k], m65_segcount[k] rows, to row m65_segtop[k]) to the
+// column at offset xoff in the buffer, every 8th byte.
+#define M65_MAXSEGS 16
+extern uint8_t m65_segtop[M65_MAXSEGS], m65_segcount[M65_MAXSEGS];
+extern uint32_t m65_segsrc[M65_MAXSEGS];
+void m65_dma_col_setup(uint32_t base, uint16_t srcstep);
+void m65_dma_segs(uint16_t xoff, uint8_t n);
+
 void m65_dma_scale(uint32_t dst, uint32_t src, uint16_t count, uint16_t srcstep,
                    uint8_t dstskip);
 
