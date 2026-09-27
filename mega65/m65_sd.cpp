@@ -87,7 +87,10 @@ static uint16_t sidfxpriority;          // the AdLib effect playing's
 static int      sidfxsound;
 #define SIDFX(reg) SID(0x60 + (reg))    // the fourth SID, voice 1
 
-// Gates and waveforms off (the voices fall silent), full volume, no filter.
+#define MUSIC_VOLUME 12                 // (of 15; tools/midi2sid.py's GAME_VOLUME)
+
+// Gates and waveforms off (the voices fall silent), the music's volume, no
+// filter.
 static void SID_Silence (void)
 {
     for (uint8_t sid = 0; sid < 3; sid++)
@@ -95,7 +98,7 @@ static void SID_Silence (void)
         for (uint8_t v = 0; v < 3; v++)
             SID(sid * 0x20 + v * 7 + 4) = 0;
         SID(sid * 0x20 + 0x17) = 0;
-        SID(sid * 0x20 + 0x18) = 0x0F;
+        SID(sid * 0x20 + 0x18) = MUSIC_VOLUME;
     }
 }
 
@@ -340,11 +343,11 @@ void SD_PositionSound (int leftvol, int rightvol)
 }
 
 // Positions are 0 (loudest) to 15 (silent) per side. For now the louder
-// side sets the channel's volume (no panning yet).
+// side sets the channel's volume (no panning yet): 0-255, full at 0.
 void SD_SetPosition (int channel, int leftpos, int rightpos)
 {
     int pos = leftpos < rightpos ? leftpos : rightpos;
-    AUDIO_CH(channel & 3, 9) = (uint8_t) ((15 - pos) * 4);
+    AUDIO_CH(channel & 3, 9) = (uint8_t) ((15 - pos) * 17);
 }
 
 int SD_PlayDigitized (word which, int leftpos, int rightpos)

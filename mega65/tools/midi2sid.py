@@ -268,7 +268,7 @@ class Voice:
         self.level = 1.0
 
 
-def convert(events, end, resumable=False):
+def convert(events, end, resumable=False, sidvolume=0x0F):
     """resumable: every note writes all of its voice's setup, so that playing
     can start at any record (for the game, which resumes songs)."""
     out = []                            # (tick, order, register, value)
@@ -375,7 +375,7 @@ def convert(events, end, resumable=False):
     # ones that change nothing (unless forced: a note's setup).
     init = []
     for sid in range(3):
-        init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, 0x0F)]
+        init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, sidvolume)]
     out.sort(key=lambda e: (e[0], e[1]))
     ticks = {}
     for t, order, reg, val, force in out:
@@ -425,6 +425,11 @@ GAME_SONGS = [
 ]
 
 
+# The music's SID volume in the game (of 15): a little under full, so the
+# sound effects (audio DMA and the fourth SID) are not drowned out.
+GAME_VOLUME = 12
+
+
 def write_game(path, mididir):
     """MUSIC.DAT for the game (mega65/m65_sd.cpp, m65_music.s):
          "WMUS", version 1, song count, ticks per second (16 bits),
@@ -439,8 +444,8 @@ def write_game(path, mididir):
             streams.append(b"")
             continue
         events, end = read_midi(os.path.join(mididir, files[0]))
-        records, _ = convert(events, end, resumable=True)
-        streams.append(encode(records))
+        records, _ = convert(events, end, resumable=True, sidvolume=GAME_VOLUME)
+        streams.append(encode(records, GAME_VOLUME))
         found += 1
     head = b"WMUS" + struct.pack("<BBH", 1, len(streams), RATE)
     pos = len(head) + 4 * len(streams)

@@ -13,17 +13,17 @@ BIN = os.path.expanduser("~/opt/llvm-mos/bin")
 PAL_CLOCK = 985248
 
 
-def encode(records):
+def encode(records, volume=0x0F):
     """(writes, delay) records -> the player's data: count, count * (register
     offset from $D400, value), delay in ticks (16 bits); a count of 0 ends."""
     out = bytearray()
     for writes, delay in records:
         if not writes:
-            writes = [(0x18, 0x0F)]     # (a record needs at least one write)
+            writes = [(0x18, volume)]   # (a record needs at least one write)
         while delay > 0xFFFF:
             out += bytes([len(writes)]) + bytes(b for w in writes for b in w) + struct.pack("<H", 0xFFFF)
             delay -= 0xFFFF
-            writes = [(0x18, 0x0F)]
+            writes = [(0x18, volume)]
         out += bytes([len(writes)]) + bytes(b for w in writes for b in w) + struct.pack("<H", delay)
     return bytes(out + b"\x00")         # 0: the end (start again)
 
