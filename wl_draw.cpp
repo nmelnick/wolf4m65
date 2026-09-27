@@ -2032,14 +2032,43 @@ void    ThreeDRefresh (void)
 #ifndef REMDEBUG
         if (fpscounter)
         {
+#ifdef MEGA65
+            // Drawing it (a bar and text) took ~6ms a frame; the value
+            // changes seldom, so its pixels are kept and put back: the bar
+            // is 48 pixels wide here, strips 0-5 rows 0-9 of the tiled
+            // buffer, 6 runs of 80 bytes.
+            static farptr fpssave;
+            static int fpsshown = -1;
+            if (fps == fpsshown && !FAR_ISNULL(fpssave))
+            {
+                for (int k = 0; k < 6; k++)
+                    m65_dma_copy(screenBuffer->farpixels + (uint16_t) k * M65_CELLCOL_SIZE,
+                                 fpssave.a + k * 80, 80);
+            }
+            else
+            {
+                fontnumber = 0;
+                SETFONTCOLOR(7,127);
+                PrintX=4; PrintY=1;
+                VWB_Bar(0,0,48,10,bordercol);
+                US_PrintSigned(fps);
+                US_Print(" ms");        // (real time per frame: see below)
+                if (FAR_ISNULL(fpssave))
+                    fpssave = far_alloc(6 * 80);
+                if (!FAR_ISNULL(fpssave))
+                {
+                    for (int k = 0; k < 6; k++)
+                        m65_dma_copy(fpssave.a + k * 80,
+                                     screenBuffer->farpixels + (uint16_t) k * M65_CELLCOL_SIZE, 80);
+                    fpsshown = fps;
+                }
+            }
+#else
             fontnumber = 0;
             SETFONTCOLOR(7,127);
             PrintX=4; PrintY=1;
             VWB_Bar(0,0,50,10,bordercol);
             US_PrintSigned(fps);
-#ifdef MEGA65
-            US_Print(" ms");            // (real time per frame: see below)
-#else
             US_Print(" fps");
 #endif
         }

@@ -20,6 +20,10 @@ bool PMSoundInfoPagePadded = false;
 //
 static farptr   vswap;
 static uint32_t vswapsize;
+// The far address of each wall and sprite page (the renderer asks for one
+// per wall and per sprite drawn), in chip RAM: the page offsets are in the
+// file's header, in attic RAM, which is slow to read on the machine.
+static farptr   pagetab;
 
 static uint32_t PageOffset (int page)
 {
@@ -46,6 +50,16 @@ void PM_Startup()
             Quit("Illegal page offset for page %i: %lu (filesize: %lu)",
                     i, (unsigned long) offs, (unsigned long) vswapsize);
     }
+
+    // (A whole number of 256-byte pages: the ray caster needs tilemap and
+    // spotvis, allocated later, 256-byte aligned.)
+    pagetab = far_alloc_chip((PMSoundStart * 4 + 255) & ~255);
+    for(int i = 0; i < PMSoundStart && !FAR_ISNULL(pagetab); i++)
+    {
+        uint32_t offs = PageOffset(i);
+        farptr page = offs ? FAR_ADD(vswap, offs) : FAR_ADD(vswap, vswapsize);
+        far_write(FAR_ADD(pagetab, 4 * i), &page.a, 4);
+    }
 }
 
 void PM_Shutdown()
@@ -60,6 +74,12 @@ static void CheckPage (int page)
 
 farptr PM_GetPage (int page)
 {
+    if((unsigned) page < (unsigned) PMSoundStart && !FAR_ISNULL(pagetab))
+    {
+        farptr r;
+        r.a = far_peekl(FAR_ADD(pagetab, 4 * page));
+        return r;
+    }
     CheckPage(page);
     uint32_t offs = PageOffset(page);
     if(!offs)                               // sparse page: no data
