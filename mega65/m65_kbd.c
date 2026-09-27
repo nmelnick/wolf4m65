@@ -16,6 +16,9 @@
 #include <stdint.h>
 
 #include "SDL.h"
+#ifdef M65_KEYSCRIPT
+#include "m65_debug.h"
+#endif
 
 #define KBD_COLDATA (*(volatile uint8_t *)0xD613)
 #define KBD_COLSEL  (*(volatile uint8_t *)0xD614)
@@ -57,8 +60,14 @@ static uint8_t keyscript_pos;
 static void run_keyscript(void)
 {
     while (keyscript_pos < sizeof keyscript / sizeof keyscript[0]
-           && SDL_GetTicks() >= keyscript[keyscript_pos].ms)
-        KBD_VIRTKEY = keyscript[keyscript_pos++].scancode;
+           && SDL_GetTicks() >= keyscript[keyscript_pos].ms) {
+        uint8_t sc = keyscript[keyscript_pos++].scancode;
+        KBD_VIRTKEY = sc;
+        m65_debug_putc('K');            // (in the serial log: K and the scancode)
+        m65_debug_putc("0123456789ABCDEF"[sc >> 4]);
+        m65_debug_putc("0123456789ABCDEF"[sc & 15]);
+        m65_debug_puts("");
+    }
 }
 #endif
 

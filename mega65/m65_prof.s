@@ -72,6 +72,11 @@ m65_prof_irq:
 	lda	[__prof_p],z
 	adc	#0
 	sta	[__prof_p],z
+	bcc	4f
+	lda	#$ff			; (saturate at 65535, not wrap to 0)
+	sta	[__prof_p],z
+	dez
+	sta	[__prof_p],z
 4:	lda	$dc0d			; acknowledge the CIA
 	plz
 	ply

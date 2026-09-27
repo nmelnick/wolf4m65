@@ -131,7 +131,8 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
     """-> overlays (lists of Func; overlay k is overlays[k - 1]), and how many
     of them run from chip RAM: the first ones,
     up to chip_slots, run from chip RAM: they get the hot functions (in the
-    order given), then those of the hot files, packed first-fit. The rest
+    order given), then those of the hot files (in the order given), packed
+    first-fit. The rest
     are planned file by file, and run from attic RAM."""
     overlays = []            # list of lists of Func
     cur, fill = None, 0
@@ -145,8 +146,9 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
                         and f.name not in resident_funcs and f.final_name not in resident_funcs:
                     byname.setdefault(f.final_name, []).append(f)
         order = [f for n in hot_funcs for f in byname.get(n, [])]
-        order += [f for m in mods if m.stem in hot_files for fs in
-                  (byname.get(f.final_name, []) for f in m.funcs) for f in fs]
+        stems = {m.stem: m for m in mods}
+        order += [f for h in hot_files if h in stems for fs in
+                  (byname.get(f.final_name, []) for f in stems[h].funcs) for f in fs]
         bins, fills = [[] for _ in range(chip_slots)], [0] * chip_slots
         room = window - 64          # (the sizes are estimates: a little slack)
         for f in order:
@@ -543,7 +545,7 @@ def main():
                     help="start a new overlay for every input file (for tests)")
     ap.add_argument("--chip-slots", type=int, default=0,
                     help="overlays that run from chip RAM (at most 16: $20000-$3FFFF)")
-    ap.add_argument("--hot", help="file of hot function names, hottest first (for --chip-slots)")
+    ap.add_argument("--hot", help="files (comma-separated) of hot function names, hottest first (for --chip-slots)")
     ap.add_argument("--hot-files", default="",
                     help="comma-separated files whose functions come next (for --chip-slots)")
     args = ap.parse_args()
@@ -563,7 +565,8 @@ def main():
     assert args.chip_slots * args.window_size <= 0x20000, "chip slots: $20000-$3FFFF"
     hot = []
     if args.hot:
-        hot = [l.strip() for l in open(args.hot) if l.strip() and not l.startswith("#")]
+        for path in args.hot.split(","):
+            hot += [l.strip() for l in open(path) if l.strip() and not l.startswith("#")]
     hot_files = [h for h in args.hot_files.split(",") if h]
     overlays, nchip = plan(mods, args.window_size,
                     set(filter(None, args.resident_files.split(","))),

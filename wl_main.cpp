@@ -792,19 +792,26 @@ const float radtoint = (float)(FINEANGLES/2/PI);
 //
 // The tables are computed on the host by the original code below (see
 // mega65/tools/gen_tables.py) and loaded into chip RAM: no floating point.
+// After them in the file, CalcProjection's results for each view width (64
+// to 320 in steps of 16: a scale, then halfview angles), which stay there.
 //
+#define PROJBYTES   (((320 - 64) / 16 + 1) * 4L + (64 + 320) / 2 * ((320 - 64) / 16 + 1))
+static farptr projtables;
+
 void BuildTables (void)
 {
     uint32_t size;
     farptr tables = m65_file_far ("tables.bin", &size);
     farptr chip;
 
-    if (FAR_ISNULL(tables) || size != finetangent.bytes() + sintable.bytes())
+    if (FAR_ISNULL(tables) || size != finetangent.bytes() + sintable.bytes() + PROJBYTES)
         CA_CannotOpen ("tables.bin");
+    size -= PROJBYTES;
     chip = far_alloc_chip (size);
     if (FAR_ISNULL(chip))
         Quit ("Out of chip far memory");
     far_copy (chip, tables, size);
+    projtables = FAR_ADD(tables, size);
 
     finetangent.use (chip);
     sintable.use (FAR_ADD(chip, finetangent.bytes()));
@@ -864,6 +871,37 @@ void BuildTables (void)
 ====================
 */
 
+#ifdef MEGA65
+
+// From TABLES.BIN (BuildTables): the double-precision atan of the original
+// takes seconds on the MEGA65, and focal is always FOCALLENGTH.
+void CalcProjection (int32_t focal)
+{
+    int16_t intang[8];
+    int     i, j, w, halfview = viewwidth/2;
+    farptr  p = projtables;
+
+    if (focal != FOCALLENGTH || viewwidth < 64 || viewwidth > 320 || viewwidth % 16)
+        Quit ("CalcProjection: no table for view width %d", viewwidth);
+    for (w = 64; w < viewwidth; w += 16)
+        p = FAR_ADD(p, 4 + w);          // (a scale, then w/2 angles)
+    focallength = focal;
+    scale = far_peekl (p);
+    heightnumerator = (TILEGLOBAL*scale)>>6;
+    p = FAR_ADD(p, 4);
+    for (i=0;i<halfview;i+=8)           // (halfview: a multiple of 8)
+    {
+        far_read (intang, FAR_ADD(p, i * 2), sizeof intang);
+        for (j=0;j<8;j++)
+        {
+            pixelangle[halfview-1-(i+j)] = intang[j];
+            pixelangle[halfview+i+j] = -intang[j];
+        }
+    }
+}
+
+#else
+
 void CalcProjection (int32_t focal)
 {
     int     i;
@@ -903,6 +941,8 @@ void CalcProjection (int32_t focal)
         pixelangle[halfview+i] = -intang;
     }
 }
+
+#endif // MEGA65
 
 
 

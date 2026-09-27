@@ -116,7 +116,7 @@ $(GB)/frame.stamp: FORCE
 	@echo '$(FRAME) $(PROFILE)' | cmp -s - $@ || echo '$(FRAME) $(PROFILE)' > $@
 $(GB)/m65_test.s: m65_test.c $(M65HDRS) $(GB)/frame.stamp
 	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(if $(FRAME),-DM65_FRAMEDUMP=$(FRAME)) \
-	  $(if $(PROFILE),-DM65_PROFILE) -S -o $@ $<
+	  $(if $(PROFILE),-DM65_PROFILE) $(if $(filter all,$(PROFILE)),-DM65_PROFILE_ALL) -S -o $@ $<
 
 # Stage 1: a probe link of the game's code alone, to learn which library
 # members it pulls in. Stage 2: libsplit compiles those (bitcode) to
@@ -135,15 +135,16 @@ $(GB)/lib/overlay.txt: $(GB)/why.txt $(RESIDENT) tools/libsplit.py
 # Code runs about 16 times slower from attic RAM than from chip RAM on the
 # real machine (hwtest.c), so the hot code goes in overlays that run from
 # chip RAM ($20000-$3FFFF, 16 slots): first the functions in hot.txt (by time
-# spent in the demo: make hotlist), then the files in HOTFILES, in order.
+# spent in the demo: make hotlist), then those in hot-ui.txt (loading, fades,
+# menus: by hand, from make profile-load), then the files in HOTFILES, in order.
 CHIPSLOTS = 16
-HOTFILES  = wl_act2,wl_agent,wl_act1,wl_state,wl_play,wl_draw,m65_vl,m65_kbd,m65_sdl,\
-            m65_surf,id_pm,id_in,id_vh,id_us_1,m65_huff,m65_mapexp,divmod_cc_obj,wl_game
+HOTFILES  = m65_vl,m65_surf,id_vh,id_us_1,m65_kbd,m65_sdl,id_in,id_pm,wl_play,wl_draw,\
+            wl_agent,wl_act1,wl_state,wl_act2,divmod_cc_obj,wl_game
 
-$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py hot.txt
+$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py hot.txt hot-ui.txt
 	rm -f $(GB)/*.ovl.s
 	python3 tools/ovlgen.py --out $(GB) --resident-funcs main \
-	  --chip-slots $(CHIPSLOTS) --hot hot.txt --hot-files '$(subst $(eval) ,,$(HOTFILES))' \
+	  --chip-slots $(CHIPSLOTS) --hot hot.txt,hot-ui.txt --hot-files '$(subst $(eval) ,,$(HOTFILES))' \
 	  --extern-objs $$(echo $(RESIDENT) $$(sed 's/\.s$$/.o/' $(GB)/lib/resident.txt) | tr ' ' ',') \
 	  $(GAMEASM) $$(cat $(GB)/lib/overlay.txt)
 
@@ -278,7 +279,7 @@ build/huffref.h: tools/gen_huffref.py $(GAMEDATA)
 	python3 tools/gen_huffref.py $@
 
 hufftest.prg: hufftest.c build/huffref.h m65_huff.c m65_huff.h m65_far.c m65_far_alloc.c m65_far.h m65_dos.c m65_video.c
-	$(CC) $(CFLAGS) -o $@ hufftest.c m65_huff.c m65_far.c m65_far_alloc.c m65_dos.c m65_video.c
+	$(CC) $(CFLAGS) -fno-lto -o $@ hufftest.c m65_huff.c m65_far.c m65_far_alloc.c m65_dos.c m65_video.c
 
 test-huff: hufftest.prg $(SDIMG)
 	python3 tools/xrun.py 600 hufftest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
@@ -390,6 +391,29 @@ profile: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
 	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem
 	python3 tools/profile.py wolf.prg.elf profile.mem
 
+# Where the time goes from start-up to the first demo frame: the sign-on,
+# title, fades and the demo's level loading (m65_test.c).
+profile-load: KEYS = {6000,0x3C},{6300,0x7F}
+profile-load: PROFILE = all
+profile-load: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem -screenshot profile.png
+	python3 tools/profile.py wolf.prg.elf profile.mem 60
+
+# The same through the menus to a new game: SPACE for the sign-on's "Press a
+# key", ESC to skip the PG-13 screen, ESC at the title for the menu, down four
+# times from "Read This!" (wrapping) to "New Game", then RETURN for it, the
+# episode and the difficulty; up to the game's first frame. (The serial log,
+# profile.ser, shows each scripted key as K and its scancode.)
+profile-menu: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F}
+profile-menu: PROFILE = all
+profile-menu: wolf.prg $(SDIMG) $(MUSICDATA) build/SFX.DAT
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) s:
+	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg wolf.prg -dumpmem profile.mem -screenshot profile.png
+	python3 tools/profile.py wolf.prg.elf profile.mem 60
+
 # hot.txt from a profile of the first 1000 demo frames.
 hotlist: FRAME = 1000
 hotlist: profile
@@ -458,4 +482,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi fps profile hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-load test-ovl test-host test-huff test-ca test-title test-proxy

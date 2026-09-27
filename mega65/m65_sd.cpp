@@ -38,6 +38,7 @@ extern "C" {
     extern uint16_t m65_mus_wait;
     extern uint8_t m65_mus_on;
     extern char m65_music_irq[];
+    void m65_test_startup (void);
     // The AdLib effects on the fourth SID (m65_sidfx.s).
     extern uint32_t m65_sidfx_ptr;
     extern uint16_t m65_sidfx_left;
@@ -220,6 +221,7 @@ void SD_Startup (void)
     (void) CIA1_ICR;
     CIA1_ICR = 0x81;                    // timer A interrupts on
     __asm__ volatile ("cli");
+    m65_test_startup();                 // (tests: m65_test.c)
 }
 
 void SD_Shutdown (void)

@@ -11,6 +11,10 @@
 //   - Built with -DM65_PROFILE as well (make profile), it samples where the
 //     CPU is from demo frame 1 to frame N (m65_prof.s) and at frame N copies
 //     the counts to $40000 for tools/profile.py.
+// With -DM65_PROFILE_ALL (make profile-load), the sampling runs from start-up
+// (m65_test_startup, from SD_Startup) to the first frame of a demo or of
+// play (FrameDumpHook, GameFrameHook): the sign-on, title, menus, fades and
+// level loading.
 
 #include <stdint.h>
 
@@ -80,8 +84,15 @@ void FrameDumpHook(void)
 #ifdef M65_FRAMEDUMP
         fpscounter = 0;         // (the host's frames have no frame rate counter)
 #endif
-#ifdef M65_PROFILE
+#if defined(M65_PROFILE) && !defined(M65_PROFILE_ALL)
         prof_start();
+#endif
+#ifdef M65_PROFILE_ALL                  // (start-up to here: the demo's first frame)
+        prof_stop();
+        m65_debug_puts("DEMO");
+        m65_debug_puts("TEST-DONE");
+        for (;;)
+            ;
 #endif
     }
     else if (frame % 100 == 1) {
@@ -108,5 +119,25 @@ void FrameDumpHook(void)
         for (;;)
             ;
     }
+#endif
+}
+
+// Start-up (SD_Startup's end, after the timer interrupt is set up).
+void m65_test_startup(void)
+{
+#ifdef M65_PROFILE_ALL
+    prof_start();
+#endif
+}
+
+// Every frame of play (not a demo's).
+void GameFrameHook(void)
+{
+#ifdef M65_PROFILE_ALL
+    prof_stop();
+    m65_debug_puts("GAME");
+    m65_debug_puts("TEST-DONE");
+    for (;;)
+        ;
 #endif
 }

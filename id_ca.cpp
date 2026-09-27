@@ -29,6 +29,7 @@ loaded into the data segment
 #include "m65_huff.h"
 #include "m65_mapexp.h"
 #include "m65_posix.h"
+#include "m65_video.h"
 #endif
 #pragma hdrstop
 
@@ -1046,13 +1047,31 @@ void CA_CacheGrChunk (int chunk)
 
 //
 // Decompresses a chunk onto the screen. The planar picture is expanded into a
-// reusable far scratch buffer, and the video layer draws it from there.
+// reusable far scratch buffer, and the video layer draws it from there. The
+// first few pictures (the title and credits screens, which come round again
+// with every demo) are kept in far memory too, turned from planar to linear
+// by the DMA (a plane at a time, every fourth byte): next time they are one
+// copy to the screen.
 //
+#define SCREENCACHE 4
+
 void CA_CacheScreen (int chunk)
 {
     static farptr scratch;
+    static struct { int chunk; farptr pic; } cache[SCREENCACHE];
+    static int cached;
     int32_t expanded;
-    farptr source;
+    farptr source, pic;
+    int i;
+
+    for (i = 0; i < cached; i++)
+    {
+        if (cache[i].chunk == chunk)
+        {
+            VL_FarLinearToScreen(cache[i].pic);
+            return;
+        }
+    }
 
     if (FAR_ISNULL(scratch))
     {
@@ -1065,7 +1084,17 @@ void CA_CacheScreen (int chunk)
     expanded = CAL_GrChunkExpandedSize(chunk, &source);
     far_huff_expand(source, scratch, expanded, (const m65_huffnode *)grhuffman);
 
-    VL_FarPlanarToScreen(scratch);
+    if (cached < SCREENCACHE && expanded == 64000
+        && !FAR_ISNULL(pic = far_alloc(64000)))
+    {
+        for (i = 0; i < 4; i++)
+            m65_dma_scale(pic.a + i, scratch.a + i * 16000UL, 16000, 0x100, 4);
+        cache[cached].chunk = chunk;
+        cache[cached++].pic = pic;
+        VL_FarLinearToScreen(pic);
+    }
+    else
+        VL_FarPlanarToScreen(scratch);
 }
 
 #else

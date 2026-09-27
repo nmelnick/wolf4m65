@@ -70,6 +70,8 @@ Run them in `mega65/`.
 | `make run-wolf` | run it headless for `RUNSECS` seconds (60); keeps `wolf.png` (screenshot) and `wolf.ser` (debug output) |
 | `make fps` | run the first demo and print the frame times |
 | `make profile` | sample where the time goes during the demo (`FRAME=N`: to frame N) |
+| `make profile-load` | the same from start-up to the first demo frame (sign-on, title, fades, loading) |
+| `make profile-menu` | the same through the menus to the first frame of a new game |
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
 | `make test-host test-proxy test-ovl test-dos test-load test-huff test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |

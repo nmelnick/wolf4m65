@@ -86,6 +86,9 @@ void    CalcTics (void);
 void    ThreeDRefresh (void);
 #if defined(MEGA65) || defined(FRAMEDUMP)
 extern "C" void FrameDumpHook (void);
+#ifdef MEGA65
+extern "C" void GameFrameHook (void);
+#endif
 #endif
 
 
@@ -1998,6 +2001,10 @@ void    ThreeDRefresh (void)
     // MEGA65 port's frames are compared with the original code's).
     if (demoplayback)
         FrameDumpHook();
+#ifdef MEGA65
+    else
+        GameFrameHook();            // (a frame of play: tests, m65_test.c)
+#endif
 #endif
 
 //

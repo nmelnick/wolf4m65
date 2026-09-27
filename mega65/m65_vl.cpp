@@ -168,9 +168,17 @@ void VL_GetPalette (SDL_Color *palette)
     memcpy(palette, curpal, sizeof(SDL_Color) * 256);
 }
 
+// A step's colour between from and to: from + (to - from) * frac / 256
+// (frac: step * 256 / steps, one division a step instead of 768).
+static inline uint8_t FadeMix (int from, int to, int32_t frac)
+{
+    return (uint8_t) (from + (int) (((int32_t) (to - from) * frac) >> 8));
+}
+
 void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 {
-    int         i,j,orig,delta;
+    int         i,j;
+    int32_t     frac;
     SDL_Color   *origptr, *newptr;
 
     red = red * 255 / 63;
@@ -185,19 +193,14 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 //
     for (i=0;i<steps;i++)
     {
+        frac = ((int32_t) i << 8) / steps;
         origptr = &palette1[start];
         newptr = &curpal[start];
         for (j=start;j<=end;j++)
         {
-            orig = origptr->r;
-            delta = red-orig;
-            newptr->r = orig + delta * i / steps;
-            orig = origptr->g;
-            delta = green-orig;
-            newptr->g = orig + delta * i / steps;
-            orig = origptr->b;
-            delta = blue-orig;
-            newptr->b = orig + delta * i / steps;
+            newptr->r = FadeMix(origptr->r, red, frac);
+            newptr->g = FadeMix(origptr->g, green, frac);
+            newptr->b = FadeMix(origptr->b, blue, frac);
             origptr++;
             newptr++;
         }
@@ -217,7 +220,8 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 
 void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
 {
-    int i,j,delta;
+    int i,j;
+    int32_t frac;
 
     VL_WaitVBL(1);
     VL_GetPalette(palette1);
@@ -227,14 +231,12 @@ void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
 //
     for (i=0;i<steps;i++)
     {
+        frac = ((int32_t) i << 8) / steps;
         for (j=start;j<=end;j++)
         {
-            delta = palette[j].r-palette1[j].r;
-            curpal[j].r = palette1[j].r + delta * i / steps;
-            delta = palette[j].g-palette1[j].g;
-            curpal[j].g = palette1[j].g + delta * i / steps;
-            delta = palette[j].b-palette1[j].b;
-            curpal[j].b = palette1[j].b + delta * i / steps;
+            curpal[j].r = FadeMix(palette1[j].r, palette[j].r, frac);
+            curpal[j].g = FadeMix(palette1[j].g, palette[j].g, frac);
+            curpal[j].b = FadeMix(palette1[j].b, palette[j].b, frac);
         }
 
         VL_WaitVBL(1);
@@ -315,24 +317,23 @@ void VL_BarScaledCoord (int scx, int scy, int scwidth, int scheight, int color)
 // origwidth x origheight, stored as 4 planes of (origwidth/4) x origheight,
 // plane p holding the pixels whose x & 3 == p. Offsets are 32-bit: a
 // full-screen picture's planes are 16000 bytes apart, which overflows a
-// 16-bit int by the fourth plane.
+// 16-bit int by the fourth plane. Each plane's part of the row goes to
+// every fourth byte of out by one DMA job (destination skip 4).
 //
 static void PlanarRow (farptr source, int origwidth, int origheight,
                        int srcx, int row, int width, byte *out)
 {
-    static byte seg[4][M65_SCREEN_W / 4];
     uint32_t planesize = (uint32_t) (origwidth >> 2) * origheight;
-    int first = srcx >> 2;
-    int count = ((srcx + width - 1) >> 2) - first + 1;
-    int p, i;
+    uint32_t rowstart = source.a + (uint32_t) row * (origwidth >> 2);
+    int p, x0;
 
-    for (p = 0; p < 4; p++)
-        far_read(seg[p], FAR_ADD(source, p * planesize
-                 + (uint32_t) row * (origwidth >> 2) + first), count);
-    for (i = 0; i < width; i++)
+    for (p = 0; p < 4; p++, rowstart += planesize)
     {
-        int x = srcx + i;
-        out[i] = seg[x & 3][(x >> 2) - first];
+        x0 = srcx + ((p - srcx) & 3);           // the row's first x in plane p
+        if (x0 >= srcx + width)
+            continue;
+        m65_dma_scale ((uint32_t) (uintptr_t) (out + (x0 - srcx)), rowstart + (x0 >> 2),
+                       (uint16_t) ((srcx + width - 1 - x0) >> 2) + 1, 0x100, 4);
     }
 }
 

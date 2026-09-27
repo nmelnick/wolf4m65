@@ -6,6 +6,13 @@ neither floating point nor tan/sin for them. Writes TABLES.BIN:
     finetangent[FINEANGLES/4]   int32 little endian
     sintable[ANGLES+ANGLES/4]   int32 little endian (costable = +ANGLES/4)
 
+then CalcProjection's results (focal length FOCALLENGTH) for each view
+width the game can have, 64 to 320 in steps of 16:
+
+    scale                       int32 little endian
+    intang[viewwidth/2]         int16 little endian (pixelangle[halfview-1-i]
+                                = intang[i], pixelangle[halfview+i] = -intang[i])
+
 usage: gen_tables.py OUT.BIN [BASE]      (run from mega65/)
 """
 import os
@@ -30,6 +37,9 @@ typedef int32_t fixed;
 #define ANGLES          360
 #define ANGLEQUAD       (ANGLES/4)
 #define FINEANGLES      3600
+#define FOCALLENGTH     (0x5700l)
+#define MINDIST         (0x5800l)
+#define VIEWGLOBAL      0x10000
 ''' + radline + r'''
 int32_t finetangent[FINEANGLES/4];
 fixed sintable[ANGLES+ANGLES/4];
@@ -42,6 +52,20 @@ int main(int argc, char **argv)
         for (int b = 0; b < 4; b++) fputc((uint32_t)finetangent[i] >> (8 * b), f);
     for (int i = 0; i < ANGLES+ANGLES/4; i++)
         for (int b = 0; b < 4; b++) fputc((uint32_t)sintable[i] >> (8 * b), f);
+    for (int viewwidth = 64; viewwidth <= 320; viewwidth += 16) {
+        // (CalcProjection, wl_main.cpp)
+        double facedist = FOCALLENGTH+MINDIST;
+        int halfview = viewwidth/2;
+        fixed scale = (fixed) (halfview*facedist/(VIEWGLOBAL/2));
+        for (int b = 0; b < 4; b++) fputc((uint32_t)scale >> (8 * b), f);
+        for (int i = 0; i < halfview; i++) {
+            double tang = (int32_t)i*VIEWGLOBAL/viewwidth/facedist;
+            float angle = (float) atan(tang);
+            int intang = (int) (angle*radtoint);
+            fputc(intang & 0xFF, f);
+            fputc((intang >> 8) & 0xFF, f);
+        }
+    }
     return fclose(f) != 0;
 }
 '''
