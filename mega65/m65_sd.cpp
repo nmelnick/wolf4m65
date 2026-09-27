@@ -375,8 +375,10 @@ int SD_PlayDigitized (word which, int leftpos, int rightpos)
     AUDIO_CH(ch, 1) = (uint8_t) ring;   // base, top, rate, volume
     AUDIO_CH(ch, 2) = (uint8_t) (ring >> 8);
     AUDIO_CH(ch, 3) = (uint8_t) (ring >> 16);
-    AUDIO_CH(ch, 7) = (uint8_t) (ring + SFX_RINGSIZE - 1);
-    AUDIO_CH(ch, 8) = (uint8_t) ((ring + SFX_RINGSIZE - 1) >> 8);
+    // (the top address is where the channel loops back, not played itself:
+    // the ring's end, so that all 512 bytes play)
+    AUDIO_CH(ch, 7) = (uint8_t) (ring + SFX_RINGSIZE);
+    AUDIO_CH(ch, 8) = (uint8_t) ((ring + SFX_RINGSIZE) >> 8);
     AUDIO_CH(ch, 4) = (uint8_t) SFX_TIMEBASE;
     AUDIO_CH(ch, 5) = (uint8_t) (SFX_TIMEBASE >> 8);
     AUDIO_CH(ch, 6) = (uint8_t) (SFX_TIMEBASE >> 16);
