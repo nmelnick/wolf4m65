@@ -27,17 +27,19 @@ static inline farptr FAR_ADD(farptr p, uint32_t n) { farptr r; r.a = p.a + n; re
 // Attic RAM layout (HyperRAM, $8000000-$87FFFFF).
 //   MB $80        not free (in use by the system; see ovl_rt.s)
 //   MB $81        code overlays (ovl_rt.s / ovl_load.c)
-//   $8200000...   game data files, loaded whole at start-up
-//   $8400000...   far heap: decompressed graphics and audio chunks
+//   $8200000...   game data files, loaded whole at start-up (4MB: the
+//                 registered version's are ~3MB with the music)
+//   $8600000...   far heap: decompressed graphics and audio chunks, saves
+//   $87F0000...   the profiler's counters (m65_prof.s)
 // Chip RAM (faster than attic RAM) used as far memory:
 //   $13000-$1F7FF chip heap: hot game data (map planes, actorat). Above our
 //                 screen RAM ($12000), below the C64-style colour RAM view.
 #define CHIP_HEAP        0x13000UL
 #define CHIP_HEAP_END    0x1F800UL
 #define ATTIC_FILES      0x8200000UL
-#define ATTIC_FILES_END  0x8400000UL
-#define ATTIC_HEAP       0x8400000UL
-#define ATTIC_HEAP_END   0x8800000UL
+#define ATTIC_FILES_END  0x8600000UL
+#define ATTIC_HEAP       0x8600000UL
+#define ATTIC_HEAP_END   0x87F0000UL
 
 // Copy between far and near memory, or far to far (DMA).
 void far_read(void *dst, farptr src, uint16_t count);

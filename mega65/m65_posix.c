@@ -39,7 +39,10 @@
 #define SAVE_SLOT   32768UL     // (a whole number of sectors)
 #define SAVE_NSLOTS 11
 #define SAVE_MAX    (SAVE_SLOT - SAVE_HDR)
-#define SAVE_FILE   "SAVES.DAT"
+#ifndef M65_VSUFFIX
+#define M65_VSUFFIX "1"             // (the version: 1 shareware, 6 registered; Makefile)
+#endif
+#define SAVE_FILE   "SAVES" M65_VSUFFIX ".DAT"
 
 static struct {
     uint8_t  open, writing;

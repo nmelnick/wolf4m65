@@ -2126,7 +2126,7 @@ __attribute__((noinline)) static int wolf_main (int argc, char *argv[]);
 //
 int main (int argc, char *argv[])
 {
-    m65_startup ("wolf.ovl", "wolf.dat");
+    m65_startup ("wolf" M65_VSUFFIX ".ovl", "wolf" M65_VSUFFIX ".dat");  // (WOLF1.*, WOLF6.*: per version)
     __set_heap_limit (__get_heap_max_safe_size ());  // (llvm-mos starts small)
     return wolf_main (argc, argv);
 }

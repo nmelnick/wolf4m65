@@ -4,6 +4,12 @@
 #ifndef M65_COMPAT_H
 #define M65_COMPAT_H
 
+// The version's suffix on the port's own files (WOLF1.OVL, SFX6.DAT,
+// SAVES1.DAT...): the Makefile's VERSION sets it.
+#ifndef M65_VSUFFIX
+#define M65_VSUFFIX "1"
+#endif
+
 #include <stddef.h>
 #include <string.h>
 

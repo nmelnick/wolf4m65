@@ -181,7 +181,7 @@ void SD_Startup (void)
         numsongs = far_peek(FAR_ADD(musicfile, 5));
     // SFX.DAT: "WSFX", version 2, sound count, tick rate, then 13 bytes per
     // sound (offset, ticks, priority, control, AD, SR, pulse width).
-    sfxfile = m65_file_far("sfx.dat", &size);
+    sfxfile = m65_file_far("sfx" M65_VSUFFIX ".dat", &size);   // (SFX1.DAT, SFX6.DAT: per version)
     havesfx = !FAR_ISNULL(sfxfile) && size >= 8
         && far_peekl(sfxfile) == 0x58465357UL            // "WSFX"
         && far_peek(FAR_ADD(sfxfile, 4)) == 2;

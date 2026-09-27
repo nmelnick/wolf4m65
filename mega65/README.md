@@ -1,7 +1,7 @@
 # Wolfenstein 3-D for the MEGA65
 
 A port of Wolf4SDL to the MEGA65, built with llvm-mos. Work in progress:
-the shareware episode plays (with saving and loading), the sign-on screen, title and demo run, and the
+the shareware episode and the registered six play (with saving and loading), the sign-on screen, title and demo run, and the
 3D view is drawn with the MEGA65's DMA scaling (close to the original,
 not pixel-exact). The music plays on three SIDs (from the MIDI originals,
 see below); the digitized sound effects (gunfire, enemy calls, doors) play
@@ -11,37 +11,44 @@ fps` measures the demo in Xemu, which is now close to the real machine).
 
 ## Running it on a MEGA65
 
-Copy `WOLF3D.D81` and the folder `WOLF4M65` to the **root directory** of the
-MEGA65's SD card (`make sdcard` gathers them in `build/sdcard/`):
+There are two builds, for the two sets of game data (bring your own: they
+are not included):
+
+| Build | Game data | Disk image | Port's files |
+| --- | --- | --- | --- |
+| shareware (`make`) | `*.WL1`, the first episode, v1.4 | `WOLF3D.D81` | `WOLF1.OVL`, `WOLF1.DAT` |
+| registered (`make VERSION=wl6`) | `*.WL6`, all six episodes, v1.4 GT/id/Activision (the one sold today, e.g. on Steam or GOG) | `WOLF3D6.D81` | `WOLF6.OVL`, `WOLF6.DAT` |
+
+(`make VERSION=wl6apo` is for the registered v1.4 as Apogee sold it; its
+graphics are numbered differently.) Both can share one SD card.
+
+Copy the disk image and the folder `WOLF4M65` to the **root directory** of
+the MEGA65's SD card (`make sdcard` gathers them in `build/sdcard/`, or
+`build/sdcard-wl6/`). In `WOLF4M65`:
 
 | File | What it is |
 | --- | --- |
-| `WOLF3D.D81` | disk image with the program, `WOLF` (in the root, like other MEGA65 programs) |
-
-and in `WOLF4M65`:
-
-| File | What it is |
-| --- | --- |
-| `WOLF.OVL` | the program's code overlays |
-| `WOLF.DAT` | the program's data |
-| `SIGNON.BIN`, `TABLES.BIN` | the sign-on screen and precomputed tables |
-| `AUDIOHED.WL1`, `AUDIOT.WL1`, `GAMEMAPS.WL1`, `MAPHEAD.WL1`, `VGADICT.WL1`, `VGAGRAPH.WL1`, `VGAHEAD.WL1`, `VSWAP.WL1` | the shareware game data (v1.4), not included: bring your own |
-| `MUSIC.DAT` | the music (optional: without it there is no music), built from your own copy of the MIDI originals |
-| `SFX.DAT` | the AdLib sound effects converted for a SID, built from your game data |
+| `WOLF1.OVL` / `WOLF6.OVL` | the program's code overlays |
+| `WOLF1.DAT` / `WOLF6.DAT` | the program's data |
+| `SIGNON.BIN`, `TABLES.BIN` | the sign-on screen and precomputed tables (both builds) |
+| `AUDIOHED`, `AUDIOT`, `GAMEMAPS`, `MAPHEAD`, `VGADICT`, `VGAGRAPH`, `VGAHEAD`, `VSWAP` (`.WL1` / `.WL6`) | your game data |
+| `MUSIC.DAT` | the music (optional: without it there is no music), built from your own copy of the MIDI originals (both builds) |
+| `SFX1.DAT` / `SFX6.DAT` | the AdLib sound effects converted for a SID (optional), built from your game data (`AUDIOT`) |
 
 The game keeps the save games, settings, key setup and high scores in
-`SAVES.DAT` in the same folder, which it makes (empty, 352KB) the first time
-it runs, so copying a newer build over the folder leaves them alone. The
-settings are saved whenever you leave the menu and after a high score.
-(Making a file needs a recent MEGA65 system (Hyppo): if saving says nothing
-and nothing is kept, copy `build/SAVES.DAT`, made by `make build/SAVES.DAT`,
-into the folder yourself.)
+`SAVES1.DAT` / `SAVES6.DAT` in the same folder, which it makes (empty,
+352KB) the first time it runs, so copying a newer build over the folder
+leaves them alone. The settings are saved whenever you leave the menu and
+after a high score. (Making a file needs a recent MEGA65 system (Hyppo):
+if saving says nothing and nothing is kept, copy `build/SAVES1.DAT`, made
+by `make build/SAVES1.DAT`, into the folder yourself.) Earlier builds
+called it `SAVES.DAT`: rename it `SAVES1.DAT` to keep those saves.
 
 Then, on the MEGA65:
 
-1. Mount `WOLF3D.D81` as drive 8: type `MOUNT "WOLF3D.D81"`, or hold
-   RESTORE for the Freezer, press `0` to choose drive 0's disk image, pick
-   `WOLF3D.D81`, and press `F3` to resume.
+1. Mount the disk image as drive 8: type `MOUNT "WOLF3D.D81"` (or
+   `"WOLF3D6.D81"`), or hold RESTORE for the Freezer, press `0` to choose
+   drive 0's disk image, pick it, and press `F3` to resume.
 2. Type `RUN "WOLF"`.
 
 The game reads its files from the SD card's `WOLF4M65` directory (or from
@@ -61,7 +68,7 @@ frame rate (a development aid).
 You need:
 
 - [llvm-mos](https://github.com/llvm-mos/llvm-mos-sdk) in `~/opt/llvm-mos`
-- the shareware data (`*.WL1`) in the repository root (git ignores them)
+- the shareware data (`*.WL1`), and for the registered build `*.WL6`, in the repository root (git ignores them)
 - for music: Bobby Prince's original MIDI files, named `NN - title.mid` as
   on the soundtrack (`03 - Get Them Before They Get You (E1M1).mid` and so
   on), in `mega65/` (git ignores them). The build converts them into
@@ -81,8 +88,8 @@ Run them in `mega65/`.
 | Command | What it does |
 | --- | --- |
 | `make wolf.prg` | build the game: `wolf.prg`, `build/game/WOLF.OVL`, `build/game/WOLF.DAT` |
-| `make sdcard` | `WOLF3D.D81` and the `WOLF4M65` folder for the SD card, in `build/sdcard/` |
-| `make dist` | `build/wolf3d-mega65.zip`: the same without the game data, plus this README |
+| `make sdcard` | the disk image and the `WOLF4M65` folder for the SD card, in `build/sdcard/` (`VERSION=wl6`: `build/sdcard-wl6/`) |
+| `make dist` | `build/wolf3d-mega65-wl1.zip` (or `-wl6`): the same without the game data, the music or the sound effects (not ours to pass on), plus this README |
 | `make run-xemu` | play it in Xemu (a window), on `build/sd.img` |
 | `make run-wolf` | run it headless for `RUNSECS` seconds (60); keeps `wolf.png` (screenshot) and `wolf.ser` (debug output) |
 | `make fps` | run the first demo and print the frame times |
@@ -100,6 +107,9 @@ Run them in `mega65/`.
 
 Options:
 
+- `VERSION=wl6` (or `wl6apo`) builds the registered game instead of the
+  shareware one: put your `*.WL6` files in the repository root. The tests
+  (`check-frame`, `test-*`) use the shareware data.
 - `KEYS='{ms,scancode},...'` presses keys at those times (in ms) through the
   keyboard's virtual-key register, for headless runs. Scan codes are
   column × 8 + row of the C65 keyboard matrix (SPACE is `0x3C`); `0x7F`
