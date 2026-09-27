@@ -1959,6 +1959,9 @@ void CalcViewVariables()
 
 void    ThreeDRefresh (void)
 {
+#ifdef MEGA65
+    PM_NextFrame ();                // (the texture cache's clock)
+#endif
 //
 // clear out the traced array
 //

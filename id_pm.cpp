@@ -1,6 +1,7 @@
 #include "wl_def.h"
 #ifdef MEGA65
 #include "m65_posix.h"
+#include "m65_video.h"
 #endif
 
 int ChunksInFile;
@@ -70,6 +71,56 @@ static void CheckPage (int page)
 {
     if(page < 0 || page >= ChunksInFile)
         Quit("PM_GetPage: Tried to access illegal page: %i", page);
+}
+
+//
+// The texture cache: attic RAM is slow for the DMA controller (a frame of
+// wall columns scaled from textures there took 17.5ms on the machine, 6.3ms
+// from colour RAM, 4.5ms from chip RAM), so the wall textures in use are
+// copied to colour RAM: TEXCACHE_SLOTS pages of 4KB above the 2KB the
+// screen's cells use (colour RAM is 32KB). A page stays until another
+// needs its slot: the least recently used, but never one used in the frame
+// being drawn (too many textures in one frame read the rest from attic RAM,
+// rather than copying pages in and out). Textures never change, so the
+// cache stays good across levels.
+//
+#define TEXCACHE_BASE  0xFF81000UL
+#define TEXCACHE_SLOTS 7
+
+static int16_t  texpage[TEXCACHE_SLOTS];   // the page in each slot, plus one (0: none)
+static uint16_t texused[TEXCACHE_SLOTS];   // the frame each was last used in
+static uint16_t texframe = 1;
+
+void PM_NextFrame ()
+{
+    texframe++;
+}
+
+farptr PM_GetTexture (int page)
+{
+    farptr r;
+    int s, victim = -1;
+
+    for(s = 0; s < TEXCACHE_SLOTS; s++)
+    {
+        if(texpage[s] == page + 1)
+        {
+            texused[s] = texframe;
+            r.a = TEXCACHE_BASE + ((uint32_t) s << 12);
+            return r;
+        }
+        if(texused[s] != texframe
+                && (victim < 0 || (uint16_t) (texframe - texused[s]) > (uint16_t) (texframe - texused[victim])))
+            victim = s;
+    }
+    r = PM_GetPage(page);
+    if(victim < 0 || PM_GetPageSize(page) != PMPageSize)
+        return r;                           // (all in use this frame: in place)
+    texpage[victim] = page + 1;
+    texused[victim] = texframe;
+    m65_dma_copy(TEXCACHE_BASE + ((uint32_t) victim << 12), r.a, PMPageSize);
+    r.a = TEXCACHE_BASE + ((uint32_t) victim << 12);
+    return r;
 }
 
 farptr PM_GetPage (int page)

@@ -25,10 +25,10 @@ farptr   PM_GetPage (int page);
 uint32_t PM_GetPageSize (int page);
 farptr   PM_GetEnd ();
 
-static inline farptr PM_GetTexture(int wallpic)
-{
-    return PM_GetPage(wallpic);
-}
+// A wall (or door) texture: from the texture cache in colour RAM when it
+// is there or can be put there (id_pm.cpp), else in place in attic RAM.
+farptr   PM_GetTexture (int wallpic);
+void     PM_NextFrame ();          // (the cache's clock: once per frame drawn)
 
 static inline farptr PM_GetSprite(int shapenum)
 {
