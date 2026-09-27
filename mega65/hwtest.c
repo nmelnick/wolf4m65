@@ -308,6 +308,32 @@ int main(void)
         m65_dma_fill(CHIP + 0x10000, 0, 64000);
     line("dma 8 x 64000 fill, chip:", ms() - t, "ms");
 
+    // DMA jobs as the renderer issues them. Setup cost: 3200 one-byte jobs
+    // (about ten frames' worth of wall columns).
+    t = ms();
+    for (i = 0; i < 3200; i++)
+        m65_dma_scale(CHIP + 0x10000 + i, CHIP, 1, 0x100, 1);
+    line("dma 3200 one-byte jobs:", ms() - t, "ms");
+
+    // Ten frames of wall columns: 304 columns of 120 pixels, each scaled
+    // from a 64-byte texture column (step 64/120), every 8th byte (the
+    // screen's layout), from the three places textures could live.
+    {
+        static const uint32_t from[3] = { ATTIC, CHIP, 0xFF80800UL };
+        static const char *const what[3] = {
+            "10 frames of walls from attic:", "10 frames of walls from chip:",
+            "10 frames of walls from colour ram:" };
+        uint8_t k, f;
+        for (k = 0; k < 3; k++) {
+            t = ms();
+            for (f = 0; f < 10; f++)
+                for (i = 0; i < 304; i++)
+                    m65_dma_scale(CHIP + 0x10000 + i, from[k] + (i & 63) * 64,
+                                  120, 0x88, 8);
+            line(what[k], ms() - t, "ms");
+        }
+    }
+
     // The multiply and divide routines: edge cases, then random pairs of
     // assorted sizes.
     {

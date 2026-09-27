@@ -93,8 +93,51 @@ void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dsts
 
 // A scaled copy: the source address steps by srcstep (8.8 fixed point: 0x100
 // is one byte) for each destination byte, the destination by dstskip.
-void m65_dma_scale(uint32_t dst, uint32_t src, uint16_t count, uint16_t srcstep,
-                   uint8_t dstskip)
-{
-    dma_run(DMA_COPY_CMD, dst, src, count, dstskip, srcstep);
-}
+// The renderer's workhorse (a job per wall column and per sprite column),
+// so in assembly, with a job list of its own whose constant bytes are set
+// already: dma_run in C took ~630 cycles a job before the DMA even started.
+// (Arguments: dst in A, X, __rc2, __rc3; src in __rc4-__rc7; count in
+// __rc8/9; srcstep in __rc10/11; dstskip in __rc12. A count of 0 does
+// nothing, as for dma_run.)
+__asm__(
+    "  .section .data.m65_sjob,\"aw\",@progbits\n"
+    "m65_sjob:\n"
+    "  .byte $0b\n"                    // 0: F018B lists
+    "  .byte $80, 0\n"                 // 1: source MB (2)
+    "  .byte $81, 0\n"                 // 3: destination MB (4)
+    "  .byte $85, 1\n"                 // 5: destination step (6)
+    "  .byte $82, 0\n"                 // 7: source step, fraction (8)
+    "  .byte $83, 1\n"                 // 9: source step, whole bytes (10)
+    "  .byte $00\n"                    // 11: end of options
+    "  .byte $00\n"                    // 12: copy
+    "  .word 0\n"                      // 13: count
+    "  .word 0\n"                      // 15: source
+    "  .byte 0\n"                      // 17: source bank
+    "  .word 0\n"                      // 18: destination
+    "  .byte 0\n"                      // 20: destination bank
+    "  .byte 0\n"                      // 21: command, high byte
+    "  .word 0\n"                      // 22: modulo
+
+    "  .section .text.m65_dma_scale,\"ax\",@progbits\n"
+    "  .globl m65_dma_scale\n"
+    "  .type m65_dma_scale,@function\n"
+    "m65_dma_scale:\n"
+    "  sta m65_sjob+18\n stx m65_sjob+19\n"        // destination
+    "  lda __rc2\n and #$0f\n sta m65_sjob+20\n"
+    "  lda __rc3\n asl\n asl\n asl\n asl\n sta __rc13\n"
+    "  lda __rc2\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_sjob+4\n"
+    "  lda __rc4\n sta m65_sjob+15\n lda __rc5\n sta m65_sjob+16\n"   // source
+    "  lda __rc6\n and #$0f\n sta m65_sjob+17\n"
+    "  lda __rc7\n asl\n asl\n asl\n asl\n sta __rc13\n"
+    "  lda __rc6\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_sjob+2\n"
+    "  lda __rc10\n sta m65_sjob+8\n lda __rc11\n sta m65_sjob+10\n"  // steps
+    "  lda __rc12\n sta m65_sjob+6\n"
+    "  lda __rc8\n sta m65_sjob+13\n ora __rc9\n beq 1f\n"            // count
+    "  lda __rc9\n sta m65_sjob+14\n"
+    "  lda #1\n sta $d703\n"                        // (F018B)
+    "  lda #0\n sta $d702\n sta $d704\n"          // the list: bank 0,
+    "  lda #>m65_sjob\n sta $d701\n"
+    "  lda #<m65_sjob\n sta $d705\n"               // and go
+    "1: rts\n"
+    "  .size m65_dma_scale, . - m65_dma_scale\n"
+);
