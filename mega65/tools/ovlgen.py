@@ -490,7 +490,7 @@ OUTPUT_FORMAT {{
 
 # Which .bss sections go into the regions' spare room (see the template).
 HIGHBSS = "*(.bss.objlist) *(.bss.doorobjlist)"
-LOWBSS = "*(.bss.palette1) *(.bss.curpal) *(.bss.vislist)"
+LOWBSS = "*(.bss.curpal) *(.bss.vislist)"
 PRGBSS = ""                     # (none fit now: resident code grew)
 
 

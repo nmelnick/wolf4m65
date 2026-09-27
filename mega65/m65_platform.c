@@ -13,6 +13,7 @@
 // just before main.
 
 #include <stdint.h>
+#include <string.h>
 
 #include "m65_debug.h"
 #include "m65_dos.h"
@@ -112,7 +113,7 @@ void m65_takeover(void)
 extern char __m65_data_start[], __m65_data_size[];
 
 // Write an ASCII string to the text screen at (row, column 0) as screen
-// codes (the upper-case character set: letters of either case -> 1-26).
+// codes (the lower case character set: a-z are 1-26, A-Z as in ASCII).
 static void screen_puts(uint32_t screen, uint16_t linestep, uint8_t row, const char *s)
 {
     uint32_t a = screen + (uint32_t)row * linestep;
@@ -120,53 +121,70 @@ static void screen_puts(uint32_t screen, uint16_t linestep, uint8_t row, const c
         char c = *s;
         if (c >= 'a' && c <= 'z')
             c -= 'a' - 1;
-        else if (c >= 'A' && c <= 'Z')
-            c -= 'A' - 1;
-        else if (c >= 0x60)
+        else if (c >= 0x5B)
             c = ' ';
         m65_dma_fill(a, (uint8_t)c, 1);
     }
 }
 
-// Report a start-up failure on the debug serial port and on the screen
-// (still the text screen the program was started from, but its contents
-// are gone: the takeover put the program's data there), then stop with a
-// red border.
+// A text screen of our own, for start-up (until the game sets its video
+// mode): the one the program was started from shows garbage once the
+// takeover copies the program's data over its memory ($0800) and the
+// overlays go over the character set (in the ROM area, $2xxxx). So the
+// font is copied to TEXT_FONT (the sound effects' rings, m65_sd.cpp: free
+// until the sound starts), and the screen moved to TEXT_SCREEN (the game's
+// screen RAM, M65_SCREENRAM: free until the video mode is set); cleared.
+#define TEXT_FONT   0x11000UL
+#define TEXT_SCREEN 0x12000UL
+#define VIC(r)      (*(volatile uint8_t *)(0xD000 + (r)))
+
+static uint16_t text_linestep;
+
+static void text_screen(void)
+{
+    uint32_t font = VIC(0x68) | (uint16_t)VIC(0x69) << 8 | (uint32_t)VIC(0x6A) << 16;
+
+    if (font != TEXT_FONT) {
+        // (A C64-style $1000 or $1800 means the character ROM, at $29000:
+        // its lower case set, at $29800, for mixed case.)
+        if (font < 0x10000UL)
+            font = 0x29800UL;
+        m65_dma_copy(TEXT_FONT, font, 2048);
+        VIC(0x68) = (uint8_t)TEXT_FONT;
+        VIC(0x69) = (uint8_t)(TEXT_FONT >> 8);
+        VIC(0x6A) = (uint8_t)(TEXT_FONT >> 16);
+    }
+    VIC(0x60) = (uint8_t)TEXT_SCREEN;
+    VIC(0x61) = (uint8_t)(TEXT_SCREEN >> 8);
+    VIC(0x62) = (uint8_t)(TEXT_SCREEN >> 16);
+    VIC(0x63) &= 0xF0;
+    text_linestep = VIC(0x58) | VIC(0x59) << 8;
+    m65_dma_fill(TEXT_SCREEN, ' ', 25 * text_linestep);
+    m65_dma_fill(0xFF80000UL + (VIC(0x64) | VIC(0x65) << 8), 1,   // colour RAM: white
+                 25 * text_linestep);
+    VIC(0x20) = 0;
+    VIC(0x21) = 0;
+}
+
+// Text centred on row `row`.
+static void text_centre(uint8_t row, const char *s)
+{
+    screen_puts(TEXT_SCREEN + (text_linestep - strlen(s)) / 2, text_linestep, row, s);
+}
+
+// Report a start-up failure on the debug serial port and on the screen,
+// then stop with a red border.
 static void fail(const char *what, const char *file)
 {
-    char line1[48], line2[16];
-    uint32_t screen, colour;
-    uint16_t linestep;
-    uint8_t i;
-
     m65_debug_puts(what);
     m65_debug_puts(file);
-
-    // (The strings may be in the screen memory about to be cleared.)
-    for (i = 0; i < sizeof line1 - 1 && what[i]; i++)
-        line1[i] = what[i];
-    line1[i] = 0;
-    for (i = 0; i < sizeof line2 - 1 && file[i]; i++)
-        line2[i] = file[i];
-    line2[i] = 0;
-
-    // Where the VIC-IV shows its text screen and colours.
-    screen = *(volatile uint8_t *)0xD060
-           | (uint32_t)*(volatile uint8_t *)0xD061 << 8
-           | (uint32_t)*(volatile uint8_t *)0xD062 << 16
-           | (uint32_t)(*(volatile uint8_t *)0xD063 & 0x0F) << 24;
-    linestep = *(volatile uint8_t *)0xD058 | *(volatile uint8_t *)0xD059 << 8;
-    colour = 0xFF80000UL + (*(volatile uint8_t *)0xD064
-                            | *(volatile uint8_t *)0xD065 << 8);
-    m65_dma_fill(screen, ' ', 25 * linestep);
-    m65_dma_fill(colour, 1, 25 * linestep);     // white
-    *(volatile uint8_t *)0xD021 = 0;
-    screen_puts(screen, linestep, 1, line1);
-    screen_puts(screen, linestep, 2, line2);
-    screen_puts(screen, linestep, 4, "Copy the WOLF4M65 folder to the SD card,");
-    screen_puts(screen, linestep, 5, "with the game's *.WL1 files in it.");
+    text_screen();
+    screen_puts(TEXT_SCREEN, text_linestep, 1, what);
+    screen_puts(TEXT_SCREEN, text_linestep, 2, file);
+    screen_puts(TEXT_SCREEN, text_linestep, 4, "Copy the WOLF4M65 folder to the SD card,");
+    screen_puts(TEXT_SCREEN, text_linestep, 5, "with the game's *.WL1 files in it.");
     for (;;)
-        *(volatile uint8_t *)0xD020 = 2;
+        VIC(0x20) = 2;
 }
 
 #ifdef M65_RESIDENT
@@ -183,6 +201,8 @@ void m65_startup(const char *ovlfile, const char *datafile)
     int fd = -1;
 
     m65_takeover();
+    text_screen();
+    text_centre(12, "Wolfenstein 3-D is loading...");
 
     // .data comes from its own file (it is not in the PRG). (Sector by
     // sector here: m65_dos_read is in .midtext, which this loads.)

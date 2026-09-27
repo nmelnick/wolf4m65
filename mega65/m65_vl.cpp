@@ -36,10 +36,12 @@ unsigned scaleFactor;
 boolean  screenfaded;
 unsigned bordercolor;
 
-// palette1 holds the start of a fade; each step is computed straight into
-// curpal (the original also used a palette2 buffer: 1KB saved).
-SDL_Color palette1[256];
+// The start of a fade is kept in chip RAM (near memory is short), and read
+// back FADECHUNK colours at a time; each step is computed straight into
+// curpal (the original had two 1KB palettes for this, palette1 and 2).
 SDL_Color curpal[256];
+static farptr fadefrom;
+#define FADECHUNK 32
 unsigned vl_curpalchanges;
 
 #define RGB(r, g, b) {(r)*255/63, (g)*255/63, (b)*255/63, 0}
@@ -175,18 +177,39 @@ static inline uint8_t FadeMix (int from, int to, int32_t frac)
     return (uint8_t) (from + (int) (((int32_t) (to - from) * frac) >> 8));
 }
 
+// A fade's start: the palette now.
+static void FadeStart (void)
+{
+    if (FAR_ISNULL(fadefrom))
+    {
+        fadefrom = far_alloc_chip(sizeof curpal);
+        if (FAR_ISNULL(fadefrom))
+            Quit ("Out of chip far memory");
+    }
+    far_write(fadefrom, curpal, sizeof curpal);
+}
+
+// Colours j... of the fade's start (up to FADECHUNK, not past end): how many.
+static int FadeFrom (SDL_Color *from, int j, int end)
+{
+    int n = end - j + 1 < FADECHUNK ? end - j + 1 : FADECHUNK;
+    far_read(from, FAR_ADD(fadefrom, (uint16_t) j * sizeof(SDL_Color)),
+             n * sizeof(SDL_Color));
+    return n;
+}
+
 void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 {
-    int         i,j;
+    int         i,j,k,n;
     int32_t     frac;
-    SDL_Color   *origptr, *newptr;
+    SDL_Color   from[FADECHUNK];
 
     red = red * 255 / 63;
     green = green * 255 / 63;
     blue = blue * 255 / 63;
 
     VL_WaitVBL(1);
-    VL_GetPalette(palette1);
+    FadeStart();
 
 //
 // fade through intermediate frames
@@ -194,15 +217,15 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
     for (i=0;i<steps;i++)
     {
         frac = ((int32_t) i << 8) / steps;
-        origptr = &palette1[start];
-        newptr = &curpal[start];
-        for (j=start;j<=end;j++)
+        for (j=start;j<=end;j+=n)
         {
-            newptr->r = FadeMix(origptr->r, red, frac);
-            newptr->g = FadeMix(origptr->g, green, frac);
-            newptr->b = FadeMix(origptr->b, blue, frac);
-            origptr++;
-            newptr++;
+            n = FadeFrom(from, j, end);
+            for (k=0;k<n;k++)
+            {
+                curpal[j+k].r = FadeMix(from[k].r, red, frac);
+                curpal[j+k].g = FadeMix(from[k].g, green, frac);
+                curpal[j+k].b = FadeMix(from[k].b, blue, frac);
+            }
         }
 
         VL_WaitVBL(1);
@@ -220,11 +243,12 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 
 void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
 {
-    int i,j;
+    int i,j,k,n;
     int32_t frac;
+    SDL_Color from[FADECHUNK];
 
     VL_WaitVBL(1);
-    VL_GetPalette(palette1);
+    FadeStart();
 
 //
 // fade through intermediate frames
@@ -232,11 +256,15 @@ void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
     for (i=0;i<steps;i++)
     {
         frac = ((int32_t) i << 8) / steps;
-        for (j=start;j<=end;j++)
+        for (j=start;j<=end;j+=n)
         {
-            curpal[j].r = FadeMix(palette1[j].r, palette[j].r, frac);
-            curpal[j].g = FadeMix(palette1[j].g, palette[j].g, frac);
-            curpal[j].b = FadeMix(palette1[j].b, palette[j].b, frac);
+            n = FadeFrom(from, j, end);
+            for (k=0;k<n;k++)
+            {
+                curpal[j+k].r = FadeMix(from[k].r, palette[j+k].r, frac);
+                curpal[j+k].g = FadeMix(from[k].g, palette[j+k].g, frac);
+                curpal[j+k].b = FadeMix(from[k].b, palette[j+k].b, frac);
+            }
         }
 
         VL_WaitVBL(1);
