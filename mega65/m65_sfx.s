@@ -3,9 +3,11 @@
 ;
 ; Audio DMA reads chip RAM only, and the sounds (8-bit unsigned, ~7kHz) are
 ; in the VSWAP file in attic RAM. So each channel loops over a 512-byte ring
-; in chip RAM (M65_SFX_RING + channel * 512), and m65_sfx_refill, called
-; from the music player's timer interrupt 200 times a second, copies from
-; attic what the channel has played since (about 35 bytes a tick). After a
+; in chip RAM (M65_SFX_RING + channel * 2048: 290ms), and m65_sfx_refill,
+; called from the music player's timer interrupt 200 times a second, copies
+; from attic what the channel has played since (about 35 bytes a tick; the
+; ring is long, as Xemu advances the channels in chunks and interrupts can
+; come late). After a
 ; sound's last byte it writes silence ($80) until that has been played too,
 ; then stops the channel.
 ;
@@ -14,7 +16,7 @@
 ; attic), left (bytes of the sound still to copy), tail (bytes of silence
 ; still to play after that), wp (where in the ring the next byte goes).
 
-M65_SFX_RING = $12800			; 4 x 512 bytes, $12800-$12FFF
+M65_SFX_RING = $10000			; 4 x 2048 bytes, $10000-$11FFF (bank 1)
 
 	.zeropage	sfx_src, sfx_dst
 
@@ -28,7 +30,7 @@ m65_sfx_state:	.zero	4
 m65_sfx_src:	.zero	16		; 4 x 32 bits
 m65_sfx_left:	.zero	8		; 4 x 16 bits
 m65_sfx_tail:	.zero	8		; 4 x 16 bits
-m65_sfx_wp:	.zero	8		; 4 x 16 bits (0..511)
+m65_sfx_wp:	.zero	8		; 4 x 16 bits (0..2047)
 sfx_ch:		.zero	1		; (the channel being refilled)
 sfx_n:		.zero	2		; (bytes to write this tick)
 sfx_k:		.zero	1		; (bytes in this run)
@@ -51,7 +53,7 @@ m65_sfx_refill:				; (from the interrupt: A, X, Y, Z are saved)
 	asl
 	asl
 	tax				; X: register offset from $D720
-	; play offset po = (current address - ring) & 511; read until stable
+	; play offset po = (current address - ring) & 2047; read until stable
 2:	lda	$d72b,x
 	sta	sfx_n+1
 	lda	$d72a,x
@@ -59,25 +61,27 @@ m65_sfx_refill:				; (from the interrupt: A, X, Y, Z are saved)
 	lda	$d72b,x
 	cmp	sfx_n+1
 	bne	2b
-	; n = (po - wp) & 511: the bytes played since the last refill
+	; n = (po - wp) & 2047: the bytes played since the last refill
 	sec
 	lda	sfx_n
 	sbc	m65_sfx_wp,y
 	sta	sfx_n
 	lda	sfx_n+1
 	sbc	m65_sfx_wp+1,y
-	and	#1			; (& 511: the ring base is 512-aligned)
+	and	#7			; (& 2047: the ring base is 2048-aligned)
 	sta	sfx_n+1
-	; the ring pointer: M65_SFX_RING + channel * 512 + wp
+	; the ring pointer: M65_SFX_RING + channel * 2048 + wp
 	lda	m65_sfx_wp,y
 	sta	sfx_dst
 	lda	sfx_ch
+	asl
+	asl
 	asl
 	clc
 	adc	#>M65_SFX_RING
 	adc	m65_sfx_wp+1,y
 	sta	sfx_dst+1
-	lda	#1			; (bank $01)
+	lda	#^M65_SFX_RING		; (bank $01)
 	sta	sfx_dst+2
 	lda	#0
 	sta	sfx_dst+3
@@ -100,18 +104,18 @@ m65_sfx_refill:				; (from the interrupt: A, X, Y, Z are saved)
 	ora	sfx_n+1
 	bne	3f
 	jmp	.Ldone
-3:	; k = min(n, 255, 512 - wp)
+3:	; k = min(n, 255, 2048 - wp)
 	lda	sfx_n+1
 	beq	4f
 	lda	#255
 	bra	5f
 4:	lda	sfx_n
 5:	sta	sfx_k
-	sec				; 512 - wp
+	sec				; 2048 - wp
 	lda	#0
 	sbc	m65_sfx_wp,y
 	sta	sfx_src+0		; (scratch, restored below)
-	lda	#2
+	lda	#8
 	sbc	m65_sfx_wp+1,y
 	bne	6f			; >= 256: no limit from the ring's end
 	lda	sfx_src+0
@@ -201,7 +205,7 @@ m65_sfx_refill:				; (from the interrupt: A, X, Y, Z are saved)
 	lda	#0
 	sta	$d720,x			; (channel off)
 	bra	.Ldone
-.Lwrote:	; wp = (wp + k) & 511; n -= k; the ring pointer follows
+.Lwrote:	; wp = (wp + k) & 2047; n -= k; the ring pointer follows
 	clc
 	lda	m65_sfx_wp,y
 	adc	sfx_k
@@ -209,10 +213,12 @@ m65_sfx_refill:				; (from the interrupt: A, X, Y, Z are saved)
 	sta	sfx_dst
 	lda	m65_sfx_wp+1,y
 	adc	#0
-	and	#1
+	and	#7
 	sta	m65_sfx_wp+1,y
 	sta	sfx_src+0		; (scratch)
 	lda	sfx_ch
+	asl
+	asl
 	asl
 	clc
 	adc	#>M65_SFX_RING

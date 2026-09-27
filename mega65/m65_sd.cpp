@@ -48,8 +48,8 @@ extern "C" {
     extern uint16_t m65_sfx_left[4], m65_sfx_tail[4], m65_sfx_wp[4];
 }
 
-#define SFX_RING      0x12800UL         // 4 x 512 bytes of chip RAM (m65_sfx.s)
-#define SFX_RINGSIZE  512
+#define SFX_RING      0x10000UL         // 4 x 2048 bytes of chip RAM (m65_sfx.s)
+#define SFX_RINGSIZE  2048
 #define AUDIO_CH(n, reg) (*(volatile uint8_t *) (0xD720 + (n) * 16 + (reg)))
 #define AUDIO_CTRL    (*(volatile uint8_t *) 0xD711)    // bit 7: audio DMA on
 // Samples at 7042Hz: the channel's timer adds this each 40.5MHz cycle and
