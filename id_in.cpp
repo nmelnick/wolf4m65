@@ -418,7 +418,7 @@ IN_Startup(void)
 #if defined(GP2X)
     MousePresent = false;
 #elif defined(MEGA65)
-    MousePresent = false;       // keyboard only for now (no joystick either)
+    MousePresent = false;       // (no mouse; the joystick: m65_sdl.c)
 #elif defined(_arch_dreamcast)
     MousePresent = DC_MousePresent();
 #else

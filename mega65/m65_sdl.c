@@ -4,7 +4,7 @@
 // surfaces are created by the video layer (m65_vl.cpp); everything else is a
 // linear surface in the far heap.
 // Time: CIA2 timer A divides the CIA clock to 1ms ticks, timer B counts them.
-// Input: the keyboard is in m65_kbd.c; no mouse, no joysticks.
+// Input: the keyboard is in m65_kbd.c; no mouse; a joystick (either port).
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -200,7 +200,7 @@ void SDL_Delay(Uint32 ms)
 }
 
 // ---------------------------------------------------------------------------
-// Input (not yet implemented)
+// Input: joystick (the keyboard is in m65_kbd.c; no mouse)
 // ---------------------------------------------------------------------------
 
 // (Keyboard events: m65_kbd.c.)
@@ -216,12 +216,50 @@ Uint8 SDL_GetMouseState(int *x, int *y)
 
 void SDL_WarpMouse(Uint16 x, Uint16 y) { (void)x; (void)y; }
 
-int SDL_NumJoysticks(void) { return 0; }
-SDL_Joystick *SDL_JoystickOpen(int index) { (void)index; return NULL; }
+// One joystick for the game: the two control ports together (either will
+// do). CIA 1's port A ($DC00) has port 2's joystick, port B ($DC01) port 1's;
+// a line reads 0 while pressed: bit 0 up, 1 down, 2 left, 3 right, 4 fire.
+// Both ports are inputs (nothing drives the C64-style keyboard matrix
+// columns, so keys do not show up in them; the keyboard is read through
+// $D614, m65_kbd.c). A digital stick: the axes are full scale or 0.
+#define CIA1_PRA   (*(volatile uint8_t *)0xDC00)
+#define CIA1_PRB   (*(volatile uint8_t *)0xDC01)
+#define CIA1_DDRA  (*(volatile uint8_t *)0xDC02)
+#define CIA1_DDRB  (*(volatile uint8_t *)0xDC03)
+
+static uint8_t joy_bits;                // pressed: bit 0 up ... bit 4 fire
+static char joy_handle;                 // (SDL_Joystick is opaque: any address)
+
+int SDL_NumJoysticks(void) { return 1; }
+
+SDL_Joystick *SDL_JoystickOpen(int index)
+{
+    if (index != 0)
+        return NULL;
+    CIA1_DDRA = 0;
+    CIA1_DDRB = 0;
+    return (SDL_Joystick *)&joy_handle;
+}
+
 void SDL_JoystickClose(SDL_Joystick *j) { (void)j; }
-void SDL_JoystickUpdate(void) {}
-Sint16 SDL_JoystickGetAxis(SDL_Joystick *j, int axis) { (void)j; (void)axis; return 0; }
+
+void SDL_JoystickUpdate(void)
+{
+    joy_bits = ~(CIA1_PRA & CIA1_PRB) & 0x1F;
+}
+
+Sint16 SDL_JoystickGetAxis(SDL_Joystick *j, int axis)
+{
+    uint8_t minus = axis ? 1 : 4, plus = axis ? 2 : 8;     // up/down, left/right
+    (void)j;
+    if (joy_bits & minus)
+        return -32768;
+    if (joy_bits & plus)
+        return 32767;
+    return 0;
+}
+
 Uint8 SDL_JoystickGetHat(SDL_Joystick *j, int hat) { (void)j; (void)hat; return 0; }
-Uint8 SDL_JoystickGetButton(SDL_Joystick *j, int button) { (void)j; (void)button; return 0; }
-int SDL_JoystickNumButtons(SDL_Joystick *j) { (void)j; return 0; }
+Uint8 SDL_JoystickGetButton(SDL_Joystick *j, int button) { (void)j; return button == 0 && (joy_bits & 0x10); }
+int SDL_JoystickNumButtons(SDL_Joystick *j) { (void)j; return 1; }
 int SDL_JoystickNumHats(SDL_Joystick *j) { (void)j; return 0; }
