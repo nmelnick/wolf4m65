@@ -8,8 +8,8 @@
 ;   again. Songs are read in place in attic RAM through a 32-bit pointer.
 ;
 ; BRK (the B flag in the pushed status) goes on to m65_irq's report.
-; In section .midtext: resident code in main memory (loaded with WOLF.DAT),
-; since the interrupt may come while any overlay is mapped.
+; Resident, since the interrupt may come while any overlay is mapped. It
+; also streams the sound effects (m65_sfx_refill, m65_sfx.s).
 
 	.zeropage	m65_mus_p, m65_mus_sp
 
@@ -24,7 +24,7 @@ m65_mus_start:	.zero	4		; the song's first record
 m65_mus_wait:	.zero	2		; ticks until the next record
 m65_mus_on:	.zero	1		; playing?
 
-	.section	.midtext.m65_music_irq,"ax",@progbits
+	.section	.text.m65_music_irq,"ax",@progbits
 	.globl	m65_music_irq
 m65_music_irq:
 	pha
@@ -45,6 +45,7 @@ m65_music_irq:
 	pla
 	jmp	m65_irq
 1:	lda	$dc0d			; acknowledge the CIA
+	jsr	m65_sfx_refill		; sound effects (m65_sfx.s)
 	lda	m65_mus_on
 	beq	.Ldone
 	lda	m65_mus_wait

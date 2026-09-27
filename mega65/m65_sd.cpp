@@ -7,15 +7,16 @@
 // CIA 1 timer A. Without MUSIC.DAT there is no music: SD_Startup reports no
 // AdLib, and the game turns its music options off itself.
 //
-// Sound effects are silent for now (every play request is ignored); the
-// plan is the AdLib effects on the fourth SID and the digitized ones on the
-// DMA audio channels. Audio chunks are already in far memory
-// (CA_AudioChunk).
+// Sound effects: the digitized sounds (VSWAP's sound pages: gunfire, enemy
+// calls, doors...) play on the four audio DMA channels, streamed from attic
+// RAM by m65_sfx.s (the same timer interrupt). The sounds that only exist as
+// AdLib effects (item pickups and the like) are silent for now.
 
 #include "../wl_def.h"
 #include "SDL_mixer.h"      // MIX_CHANNELS
 #include "m65_far.h"
 #include "m65_posix.h"
+#include "m65_video.h"      // m65_dma_copy, m65_dma_fill
 
 globalsoundpos channelSoundPos[MIX_CHANNELS];
 
@@ -34,7 +35,32 @@ extern "C" {
     extern uint16_t m65_mus_wait;
     extern uint8_t m65_mus_on;
     extern char m65_music_irq[];
+    // The sound effect streamer (m65_sfx.s).
+    extern uint8_t m65_sfx_state[4];
+    extern uint32_t m65_sfx_src[4];
+    extern uint16_t m65_sfx_left[4], m65_sfx_tail[4], m65_sfx_wp[4];
 }
+
+#define SFX_RING      0x12800UL         // 4 x 512 bytes of chip RAM (m65_sfx.s)
+#define SFX_RINGSIZE  512
+#define AUDIO_CH(n, reg) (*(volatile uint8_t *) (0xD720 + (n) * 16 + (reg)))
+#define AUDIO_CTRL    (*(volatile uint8_t *) 0xD711)    // bit 7: audio DMA on
+// Samples at 7042Hz: the channel's timer adds this each 40.5MHz cycle and
+// takes a sample when it passes 2^24.
+#define SFX_TIMEBASE  ((uint32_t) (7042.0 * 16777216.0 / 40500000.0))
+
+// The digitized sounds: where each is in attic RAM (32 bits) and how long
+// (16 bits), a table in attic RAM too (near memory is short).
+static farptr   digitable;
+static int      numdigi;
+#define DIGISRC(i) far_peekl(FAR_ADD(digitable, (uint16_t) (i) * 6))
+#define DIGILEN(i) far_peekw(FAR_ADD(digitable, (uint16_t) (i) * 6 + 4))
+static int      channelsound[4];        // the sound each channel plays (for SD_SoundPlaying)
+static uint32_t channelstart[4];        // when it started (the oldest gives way)
+static uint32_t channelend[4];          // when it should have finished (a safety net:
+                                        // if the channel stalls, nothing waits for ever)
+static int      nextleft, nextright;    // SD_PositionSound's, for the next sound
+static boolean  nextpositioned;
 
 #define SID_BASE   0xD400               // three SIDs, 0x20 apart
 #define SID(reg)   (*(volatile uint8_t *) (SID_BASE + (reg)))
@@ -60,12 +86,67 @@ static void SID_Silence (void)
     }
 }
 
+// The digitized sounds' places and lengths (the original's SDL_SetupDigi,
+// with far pointers): a sound spans pages from its start page to the next
+// sound's; its exact length is in the list. Pages are consecutive in the
+// VSWAP copy in attic RAM, so a sound is one run of bytes there (else it is
+// copied into one).
+static void SD_SetupDigi (void)
+{
+    farptr info = PM_GetPage(ChunksInFile - 1);
+    int n = (int) (PM_GetPageSize(ChunksInFile - 1) / 4);
+    int i;
+
+    numdigi = 0;
+    digitable = far_alloc((uint16_t) n * 6);
+    if (FAR_ISNULL(digitable))
+        return;
+    for (i = 0; i < n; i++)
+    {
+        int start = far_peekw(FAR_ADD(info, i * 4));
+        if (start + PMSoundStart >= ChunksInFile - 1)
+            break;
+        int last = ChunksInFile - 1;
+        if (i < n - 1)
+        {
+            int next = far_peekw(FAR_ADD(info, i * 4 + 4));
+            if (next != 0 && next + PMSoundStart <= ChunksInFile - 1)
+                last = next + PMSoundStart;
+        }
+        uint16_t len = far_peekw(FAR_ADD(info, i * 4 + 2));
+        farptr src = PM_GetPage(PMSoundStart + start);
+        boolean contiguous = true;
+        for (int page = PMSoundStart + start; page + 1 < last; page++)
+            if (PM_GetPage(page + 1).a != PM_GetPage(page).a + PM_GetPageSize(page))
+                contiguous = false;
+        if (!contiguous)
+        {
+            farptr copy = far_alloc(len);
+            uint32_t at = 0;
+            if (FAR_ISNULL(copy))
+                break;
+            for (int page = PMSoundStart + start; page < last && at < len; page++)
+            {
+                uint32_t n2 = PM_GetPageSize(page);
+                if (n2 > len - at) n2 = len - at;
+                m65_dma_copy(copy.a + at, PM_GetPage(page).a, (uint16_t) n2);
+                at += n2;
+            }
+            src = copy;
+        }
+        far_pokew(FAR_ADD(digitable, i * 6), (uint16_t) src.a);
+        far_pokew(FAR_ADD(digitable, i * 6 + 2), (uint16_t) (src.a >> 16));
+        far_pokew(FAR_ADD(digitable, i * 6 + 4), len);
+        numdigi = i + 1;
+    }
+}
+
 void SD_Startup (void)
 {
     int i;
     uint32_t size;
 
-    SoundBlasterPresent = false;
+    SoundBlasterPresent = true;         // (the audio DMA channels)
     SoundMode = sdm_Off;
     MusicMode = smm_Off;
     DigiMode = sds_Off;
@@ -79,17 +160,30 @@ void SD_Startup (void)
     AdLibPresent = !FAR_ISNULL(musicfile) && size >= 8
         && far_peekl(musicfile) == 0x53554D57UL          // "WMUS"
         && far_peek(FAR_ADD(musicfile, 4)) == 1;
-    if (!AdLibPresent)
-        return;
-    numsongs = far_peek(FAR_ADD(musicfile, 5));
+    if (AdLibPresent)
+    {
+        numsongs = far_peek(FAR_ADD(musicfile, 5));
+        SIDMODE = (SIDMODE & 0x10) | 0x0F;  // 8580 sound (as the previews)
+        for (i = 0; i < 0x60; i++)
+            SID(i) = 0;
+        SID_Silence();
+    }
 
-    SIDMODE = (SIDMODE & 0x10) | 0x0F;  // 8580 sound (as the previews)
-    for (i = 0; i < 0x60; i++)
-        SID(i) = 0;
-    SID_Silence();
+    // The digitized sounds: the list is VSWAP's last page, (start page,
+    // length) pairs, as the original SDL_SetupDigi reads it.
+    SD_SetupDigi();
+    for (i = 0; i < 4; i++)
+    {
+        AUDIO_CH(i, 0) = 0;             // channels off
+        m65_sfx_state[i] = 0;
+    }
+    AUDIO_CTRL |= 0x80;                 // audio DMA on
+    for (i = 0; i < 4; i++)
+        ((volatile uint8_t *) 0xD71C)[i] = 0xFF;    // (each channel on the other side too)
 
-    // The player's interrupt: CIA 1 timer A at the song rate.
-    uint16_t latch = (uint16_t) (CIA_HZ / far_peekw(FAR_ADD(musicfile, 6)) - 1);
+    // The timer interrupt: music (if any) and the sound effect streamer,
+    // 200 times a second (the songs' rate).
+    uint16_t latch = (uint16_t) (CIA_HZ / 200 - 1);
     __asm__ volatile ("sei");
     m65_mus_on = 0;
     *(volatile uint16_t *) 0xFFFE = (uint16_t) (uintptr_t) m65_music_irq;
@@ -201,22 +295,131 @@ boolean SD_SetSoundMode (SDMode mode)
     return true;
 }
 
-int SD_GetChannelForDigi (int which) { (void) which; return -1; }
-void SD_PositionSound (int leftvol, int rightvol) { (void) leftvol; (void) rightvol; }
-boolean SD_PlaySound (soundnames sound) { (void) sound; return false; }
-void SD_SetPosition (int channel, int leftvol, int rightvol)
+// A channel for a sound: its fixed one (DigiChannel: e.g. the player's
+// weapons share one), else a free one, else the one playing longest.
+int SD_GetChannelForDigi (int which)
 {
-    (void) channel; (void) leftvol; (void) rightvol;
+    int i, best = 0;
+    if (DigiChannel[which] != -1)
+        return DigiChannel[which] & 3;
+    for (i = 0; i < 4; i++)
+        if (!m65_sfx_state[i])
+            return i;
+    for (i = 1; i < 4; i++)
+        if (channelstart[i] < channelstart[best])
+            best = i;
+    return best;
 }
-void SD_StopSound (void) {}
-void SD_WaitSoundDone (void) {}
-word SD_SoundPlaying (void) { return 0; }
 
-void SD_SetDigiDevice (SDSMode mode) { (void) mode; DigiMode = sds_Off; }
-void SD_PrepareSound (int which) { (void) which; }
+void SD_PositionSound (int leftvol, int rightvol)
+{
+    nextleft = leftvol;
+    nextright = rightvol;
+    nextpositioned = true;
+}
+
+// Positions are 0 (loudest) to 15 (silent) per side. For now the louder
+// side sets the channel's volume (no panning yet).
+void SD_SetPosition (int channel, int leftpos, int rightpos)
+{
+    int pos = leftpos < rightpos ? leftpos : rightpos;
+    AUDIO_CH(channel & 3, 9) = (uint8_t) ((15 - pos) * 4);
+}
+
 int SD_PlayDigitized (word which, int leftpos, int rightpos)
 {
-    (void) which; (void) leftpos; (void) rightpos;
+    if (DigiMode == sds_Off || which >= numdigi)
+        return 0;
+    uint32_t src = DIGISRC(which);
+    uint16_t len = DIGILEN(which);
+    if (!len)
+        return 0;
+    int ch = SD_GetChannelForDigi(which);
+    uint32_t ring = SFX_RING + (uint32_t) ch * SFX_RINGSIZE;
+    uint16_t first = len < SFX_RINGSIZE ? len : SFX_RINGSIZE;
+
+    __asm__ volatile ("sei");
+    AUDIO_CH(ch, 0) = 0;                // (stop it, then start afresh)
+    m65_sfx_state[ch] = 0;
+    __asm__ volatile ("cli");
+
+    // The ring: the sound's first bytes, then silence.
+    m65_dma_copy(ring, src, first);
+    if (first < SFX_RINGSIZE)
+        m65_dma_fill(ring + first, 0x80, SFX_RINGSIZE - first);
+
+    AUDIO_CH(ch, 1) = (uint8_t) ring;   // base, top, rate, volume
+    AUDIO_CH(ch, 2) = (uint8_t) (ring >> 8);
+    AUDIO_CH(ch, 3) = (uint8_t) (ring >> 16);
+    AUDIO_CH(ch, 7) = (uint8_t) (ring + SFX_RINGSIZE - 1);
+    AUDIO_CH(ch, 8) = (uint8_t) ((ring + SFX_RINGSIZE - 1) >> 8);
+    AUDIO_CH(ch, 4) = (uint8_t) SFX_TIMEBASE;
+    AUDIO_CH(ch, 5) = (uint8_t) (SFX_TIMEBASE >> 8);
+    AUDIO_CH(ch, 6) = (uint8_t) (SFX_TIMEBASE >> 16);
+    SD_SetPosition(ch, leftpos, rightpos);
+
+    __asm__ volatile ("sei");
+    m65_sfx_src[ch] = src + first;
+    m65_sfx_left[ch] = len - first;
+    m65_sfx_tail[ch] = SFX_RINGSIZE;
+    m65_sfx_wp[ch] = 0;
+    m65_sfx_state[ch] = 1;
+    AUDIO_CH(ch, 0) = 0xE2;             // on, looping, unsigned, 8-bit
+    __asm__ volatile ("cli");
+    channelstart[ch] = SDL_GetTicks();
+    channelend[ch] = channelstart[ch] + (uint32_t) len * 1000 / 7042 + 200;
+    return ch;
+}
+
+boolean SD_PlaySound (soundnames sound)
+{
+    int lp = nextleft, rp = nextright;
+    boolean positioned = nextpositioned;
+
+    nextleft = nextright = 0;
+    nextpositioned = false;
+    if (sound < 0 || sound >= LASTSOUND || DigiMode == sds_Off || DigiMap[sound] == -1)
+        return false;                   // (AdLib-only effects: none yet)
+    int ch = SD_PlayDigitized((word) DigiMap[sound], lp, rp);
+    channelsound[ch] = sound;
+    channelSoundPos[ch].valid = 0;      // (PlaySoundLocGlobal sets it for moving sounds)
+    SoundPositioned = positioned;
+    return (boolean) (ch + 1);          // (the original returns channel + 1)
+}
+
+void SD_StopDigitized (void)
+{
+    int i;
+    __asm__ volatile ("sei");
+    for (i = 0; i < 4; i++)
+    {
+        AUDIO_CH(i, 0) = 0;
+        m65_sfx_state[i] = 0;
+    }
+    __asm__ volatile ("cli");
+}
+
+void SD_StopSound (void)
+{
+    SD_StopDigitized();
+}
+
+// The sound on a channel still playing, if any (the game waits on it).
+word SD_SoundPlaying (void)
+{
+    int i;
+    uint32_t now = SDL_GetTicks();
+    for (i = 0; i < 4; i++)
+        if (m65_sfx_state[i] && (int32_t) (channelend[i] - now) > 0)
+            return (word) channelsound[i];
     return 0;
 }
-void SD_StopDigitized (void) {}
+
+void SD_WaitSoundDone (void)
+{
+    while (SD_SoundPlaying())
+        SDL_Delay(5);
+}
+
+void SD_SetDigiDevice (SDSMode mode) { DigiMode = mode; }
+void SD_PrepareSound (int which) { (void) which; }  // (all set up in SD_SetupDigi)

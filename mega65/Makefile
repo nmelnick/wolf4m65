@@ -46,7 +46,7 @@ GAMEC     = m65_posix m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_trace m65
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
-RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_draw.o $(GB)/m65_music.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
+RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_draw.o $(GB)/m65_music.o $(GB)/m65_sfx.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 
 # make OVLTRACE=1: log every overlay call on the serial port (slow).
 OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
@@ -54,6 +54,10 @@ comma = ,
 $(GB)/ovltrace.stamp: FORCE
 	@mkdir -p $(GB)
 	@echo '$(OVLTRACE)' | cmp -s - $@ || echo '$(OVLTRACE)' > $@
+$(GB)/m65_sfx.o: m65_sfx.s
+	@mkdir -p $(GB)
+	$(CC) -c -fno-lto -o $@ $<
+
 $(GB)/m65_music.o: m65_music.s
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto -o $@ $<
