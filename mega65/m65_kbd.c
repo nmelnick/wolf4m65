@@ -63,6 +63,11 @@ static uint8_t keyscript_pos;
 
 static void run_keyscript(void)
 {
+    static uint8_t done;
+    if (!done && keyscript_pos == sizeof keyscript / sizeof keyscript[0]) {
+        done = 1;
+        m65_debug_puts("KEYS-DONE");    // (the serial log: a marker for the tests)
+    }
     while (keyscript_pos < sizeof keyscript / sizeof keyscript[0]
            && SDL_GetTicks() >= keyscript[keyscript_pos].ms) {
         uint8_t sc = keyscript[keyscript_pos++].scancode;

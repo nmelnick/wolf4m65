@@ -485,12 +485,14 @@ profile-menu: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
 # twice (the main menu's "quit?", answered no), down nine times (wrapping)
 # to "Load Game", RETURN, RETURN for slot 0. The serial log shows each file
 # written (SAVED) and each save read; tools/check_savetest.py checks those and
-# SAVES.DAT on the SD image. (The game goes on: the run ends on its timer.)
-test-save: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F},{44000,0x47},{44300,0x7F},{47000,0x07},{47300,0x7F},{48000,0x07},{48300,0x7F},{49000,0x07},{49300,0x7F},{50000,0x07},{50300,0x7F},{52000,0x01},{52300,0x7F},{55000,0x01},{55300,0x7F},{57000,0x0A},{57300,0x7F},{58000,0x01},{58300,0x7F},{62000,0x47},{62300,0x7F},{66000,0x47},{66300,0x7F},{69000,0x07},{69300,0x7F},{70000,0x07},{70300,0x7F},{71000,0x07},{71300,0x7F},{72000,0x07},{72300,0x7F},{73000,0x07},{73300,0x7F},{74000,0x07},{74300,0x7F},{75000,0x07},{75300,0x7F},{76000,0x07},{76300,0x7F},{77000,0x07},{77300,0x7F},{80000,0x01},{80300,0x7F},{83000,0x01},{83300,0x7F}
+# SAVES.DAT on the SD image. (The run ends when the script has run out, at
+# 92s of the machine's time: KEYS-DONE, m65_kbd.c; not on a timer of the
+# host's, which made the test depend on how busy the host was.)
+test-save: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F},{44000,0x47},{44300,0x7F},{47000,0x07},{47300,0x7F},{48000,0x07},{48300,0x7F},{49000,0x07},{49300,0x7F},{50000,0x07},{50300,0x7F},{52000,0x01},{52300,0x7F},{55000,0x01},{55300,0x7F},{57000,0x0A},{57300,0x7F},{58000,0x01},{58300,0x7F},{62000,0x47},{62300,0x7F},{66000,0x47},{66300,0x7F},{69000,0x07},{69300,0x7F},{70000,0x07},{70300,0x7F},{71000,0x07},{71300,0x7F},{72000,0x07},{72300,0x7F},{73000,0x07},{73300,0x7F},{74000,0x07},{74300,0x7F},{75000,0x07},{75300,0x7F},{76000,0x07},{76300,0x7F},{77000,0x07},{77300,0x7F},{80000,0x01},{80300,0x7F},{83000,0x01},{83300,0x7F},{92000,0x7F}
 test-save: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SDDIR)
 	-MTOOLSRC=$(abspath build/mtoolsrc) mdel $(SDDIR)SAVES$(V).DAT
-	-python3 tools/xrun.py 15 wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
+	python3 tools/xrun.py 90 wolf.ser KEYS-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem wolf.mem -screenshot wolf.png
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(SDDIR)SAVES$(V).DAT build/SAVES$(V).GOT
 	python3 tools/check_savetest.py wolf.ser build/SAVES$(V).GOT
