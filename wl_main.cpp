@@ -178,6 +178,10 @@ void ReadConfig(void)
 
         read(file,&viewsize,sizeof(viewsize));
         read(file,&mouseadjustment,sizeof(mouseadjustment));
+#ifdef MEGA65
+        read(file,&lowdetail,sizeof(lowdetail));    // (absent from older configs: stays off)
+        if(lowdetail) lowdetail=true;
+#endif
 
         close(file);
 
@@ -295,6 +299,9 @@ void WriteConfig(void)
 
         write(file,&viewsize,sizeof(viewsize));
         write(file,&mouseadjustment,sizeof(mouseadjustment));
+#ifdef MEGA65
+        write(file,&lowdetail,sizeof(lowdetail));
+#endif
 
         close(file);
     }

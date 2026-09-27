@@ -372,11 +372,13 @@ extern "C" byte m65_colbuf[];
 // column). The original's error-accumulating loop picks texels a little
 // differently: close, not identical.
 //
+boolean lowdetail;
+
 void ScalePost()
 {
     int yd, walltop, ytop, yend;
     uint16_t step;
-    uint32_t first;
+    uint32_t first, dst;
 
     yd = wallheight[postx] >> 3;
     if(yd <= 0) return;                 // (nothing to draw, as the original)
@@ -390,8 +392,12 @@ void ScalePost()
     step = DivApprox((uint32_t) TEXTURESIZE / 2 << 8, (uint16_t) yd);
     first = ytop == walltop ? 0      // (not clipped at the top: most columns)
           : DivApprox((uint32_t) (ytop - walltop) * (TEXTURESIZE / 2), (uint16_t) yd);
-    m65_dma_scale(ViewAddr(postx, ytop), postsource.a + first,
-                  yend - ytop + 1, step, M65_COLUMN_STEP);
+    dst = ViewAddr(postx, ytop);
+    m65_dma_scale(dst, postsource.a + first, yend - ytop + 1, step, M65_COLUMN_STEP);
+    // Low detail: the traced (even) column and the next, the same (an even
+    // x and the next are in the same 8-pixel strip: the view starts on one).
+    if(lowdetail && postx + 1 < viewwidth)
+        m65_dma_scale(dst + 1, postsource.a + first, yend - ytop + 1, step, M65_COLUMN_STEP);
 }
 
 #else
@@ -1584,8 +1590,19 @@ void AsmRefresh()
         Quit("m65_trace: tilemap/spotvis must be 256-byte aligned");
 #endif
 
+#ifdef MEGA65
+    // Low detail: only the even columns are traced; each odd one gets its
+    // left neighbour's height (for the sprites' clipping, and the
+    // same-texture shortcut below, which reads pixx-1), here and at the end.
+    int pixstep = lowdetail ? 2 : 1;
+    for(pixx=0;pixx<viewwidth;pixx+=pixstep)
+    {
+        if(lowdetail && pixx)
+            wallheight[pixx-1] = wallheight[pixx-2];
+#else
     for(pixx=0;pixx<viewwidth;pixx++)
     {
+#endif
         short angl=midangle+pixelangle[pixx];
         if(angl<0) angl+=FINEANGLES;
         if(angl>=3600) angl-=FINEANGLES;
@@ -1908,6 +1925,10 @@ void WallRefresh (void)
     lastside = -1;                  // the first pixel is on a new wall
     AsmRefresh ();
     ScalePost ();                   // no more optimization on last post
+#ifdef MEGA65
+    if (lowdetail)                  // (the last, odd, column: see AsmRefresh)
+        wallheight[viewwidth-1] = wallheight[viewwidth-2];
+#endif
 }
 
 void CalcViewVariables()

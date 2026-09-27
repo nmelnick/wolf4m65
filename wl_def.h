@@ -939,6 +939,9 @@ extern  int      shootdelta;
 extern  unsigned screenofs;
 
 extern  boolean  startgame;
+#ifdef MEGA65
+extern  boolean  lowdetail;             // walls traced every other column (wl_draw.cpp)
+#endif
 extern  char     str[80];
 extern  char     configdir[256];
 extern  char     configname[13];

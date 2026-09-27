@@ -121,6 +121,8 @@ CP_itemtype SndMenu[] = {
 
 #ifdef JAPAN
 enum { CTL_MOUSEENABLE, CTL_JOYENABLE, CTL_JOY2BUTTONUNKNOWN, CTL_GAMEPADUNKONWN, CTL_MOUSESENS, CTL_CUSTOMIZE };
+#elif defined(MEGA65)
+enum { CTL_MOUSEENABLE, CTL_MOUSESENS, CTL_JOYENABLE, CTL_CUSTOMIZE, CTL_LOWDETAIL };
 #else
 enum { CTL_MOUSEENABLE, CTL_MOUSESENS, CTL_JOYENABLE, CTL_CUSTOMIZE };
 #endif
@@ -138,6 +140,9 @@ CP_itemtype CtlMenu[] = {
     {0, STR_SENS, MouseSensitivity},
     {0, STR_JOYEN, 0},
     {1, STR_CUSTOM, CustomControls}
+#ifdef MEGA65
+    , {1, "Low Detail", 0}              // (faster: walls traced every other column)
+#endif
 #endif
 };
 
@@ -1877,6 +1882,13 @@ CP_Control (int)
                 MenuFadeIn ();
                 WaitKeyUp ();
                 break;
+#ifdef MEGA65
+            case CTL_LOWDETAIL:
+                lowdetail ^= 1;
+                DrawCtlScreen ();
+                ShootSnd ();
+                break;
+#endif
         }
     }
     while (which >= 0);
@@ -2062,6 +2074,11 @@ DrawCtlScreen (void)
         VWB_DrawPic (x, y, C_SELECTEDPIC);
     else
         VWB_DrawPic (x, y, C_NOTSELECTEDPIC);
+
+#ifdef MEGA65
+    y = CTL_Y + 3 + CTL_LOWDETAIL * 13;
+    VWB_DrawPic (x, y, lowdetail ? C_SELECTEDPIC : C_NOTSELECTEDPIC);
+#endif
 
     //
     // PICK FIRST AVAILABLE SPOT
