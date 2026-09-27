@@ -116,19 +116,22 @@ void VL_ConvertPalette(byte *srcpal, SDL_Color *destpal, int numColors)
     }
 }
 
+static void PushCurPal (void);
+
+// (Straight into curpal: the original built a 256-colour palette on the
+// stack, 1KB, and the C stack here has 1KB in all.)
 void VL_FillPalette (int red, int green, int blue)
 {
     int i;
-    SDL_Color pal[256];
 
     for(i=0; i<256; i++)
     {
-        pal[i].r = red;
-        pal[i].g = green;
-        pal[i].b = blue;
+        curpal[i].r = red;
+        curpal[i].g = green;
+        curpal[i].b = blue;
     }
-
-    VL_SetPalette(pal, true);
+    vl_curpalchanges++;
+    PushCurPal();
 }
 
 void VL_SetColor (int color, int red, int green, int blue)
