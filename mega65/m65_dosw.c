@@ -36,3 +36,49 @@ int m65_dos_write512(int fd, uint32_t src, uint16_t count)
         : "y", "c", "v", "memory");
     return ok ? 0 : -1;
 }
+
+// Create a file of `size` bytes (< 16MB) in the current directory; it must
+// not exist yet. Hyppo's mkfile (marked unfinished in its source): the name
+// is 8.3; it allocates a contiguous run of clusters, in whole FAT sectors'
+// worth (128 clusters), all chained to the file although the directory
+// entry has `size`; the contents are whatever was on the card. Returns 0
+// on success.
+#define HYPPO_SETNAME    0x2E
+#define namebuf ((char *)0x0200)        // (as m65_dos.c: setname's buffer)
+
+int m65_dos_mkfile(const char *name, uint32_t size)
+{
+    uint8_t a = HYPPO_SETNAME, x = 0x00, y = 0x02, ok = 0, i;
+
+    for (i = 0; name[i] && i < 63; i++)
+        namebuf[i] = name[i];
+    namebuf[i] = 0;
+    __asm__ volatile(
+        "sta $d640\n"
+        "clv\n"
+        "bcc 1f\n"
+        "inc %[ok]\n"
+        "1:\n"
+        : "+a"(a), "+x"(x), "+y"(y), [ok] "+r"(ok)
+        :
+        : "c", "v", "memory");
+    if (!ok)
+        return -1;
+    ok = 0;
+    x = (uint8_t)size;
+    y = (uint8_t)(size >> 8);
+    i = (uint8_t)(size >> 16);
+    __asm__ volatile(
+        "taz\n"                         // (Z: the size's top byte)
+        "lda #$1e\n"                    // (HYPPO_MKFILE)
+        "sta $d640\n"
+        "clv\n"
+        "ldz #0\n"                      // (the compiler's code expects Z = 0)
+        "bcc 1f\n"
+        "inc %[ok]\n"
+        "1:\n"
+        : "+a"(i), "+x"(x), "+y"(y), [ok] "+r"(ok)
+        :
+        : "c", "v", "memory");
+    return ok ? 0 : -1;
+}

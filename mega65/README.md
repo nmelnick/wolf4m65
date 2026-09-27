@@ -23,14 +23,14 @@ Copy the folder `WOLF4M65` to the **root directory** of the MEGA65's SD card
 | `AUDIOHED.WL1`, `AUDIOT.WL1`, `GAMEMAPS.WL1`, `MAPHEAD.WL1`, `VGADICT.WL1`, `VGAGRAPH.WL1`, `VGAHEAD.WL1`, `VSWAP.WL1` | the shareware game data (v1.4), not included: bring your own |
 | `MUSIC.DAT` | the music (optional: without it there is no music), built from your own copy of the MIDI originals |
 | `SFX.DAT` | the AdLib sound effects converted for a SID, built from your game data |
-| `SAVEGAM0.WL1` ... `SAVEGAM9.WL1` | the ten save game slots (32KB each, empty to start with) |
-| `CONFIG.WL1` | settings, key setup and high scores (32KB, empty to start with) |
 
-The MEGA65 can overwrite files on the SD card but not create them, so the
-save game and settings files come empty, ready to be written. The settings
-are saved whenever you leave the menu and after a high score. **When
-updating to a newer build, leave out `SAVEGAM*.WL1` and `CONFIG.WL1`**, or
-your saves and settings are replaced by empty ones.
+The game keeps the save games, settings, key setup and high scores in
+`SAVES.DAT` in the same folder, which it makes (empty, 352KB) the first time
+it runs, so copying a newer build over the folder leaves them alone. The
+settings are saved whenever you leave the menu and after a high score.
+(Making a file needs a recent MEGA65 system (Hyppo): if saving says nothing
+and nothing is kept, copy `build/SAVES.DAT`, made by `make build/SAVES.DAT`,
+into the folder yourself.)
 
 Then, on the MEGA65:
 

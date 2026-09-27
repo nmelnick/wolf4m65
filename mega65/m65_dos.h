@@ -35,4 +35,9 @@ uint32_t m65_dos_read(int fd, uint32_t dst, uint32_t count);
 // cannot make a file longer: past its end this fails. Returns 0 on success.
 int m65_dos_write512(int fd, uint32_t src, uint16_t count);
 
+// Create a file of `size` (< 16MB) bytes in the current directory (it must
+// not exist); the contents are left as they were on the card (m65_dosw.c:
+// Hyppo's mkfile, which not all versions have). Returns 0 on success.
+int m65_dos_mkfile(const char *name, uint32_t size);
+
 #endif
