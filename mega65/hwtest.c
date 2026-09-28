@@ -279,7 +279,7 @@ int main(void)
         ((void (*)(void))0x6000)();
     t = ms() - t;
     __asm__ volatile("lda #0\n ldx #0\n ldy #0\n ldz #0\n map\n eom\n" ::: "a", "x", "y");
-    line("code in attic via $4000, 32 loops:", t, "ms");
+    line("code in attic via $6000, 32 loops:", t, "ms");
 
     // Reading 64KB, 8 times.
     t = ms();
