@@ -334,6 +334,64 @@ int main(void)
         }
     }
 
+    // Colour RAM as the game's texture cache uses it: seven 4KB slots from
+    // $FF81000, each written with its own pattern and read back by DMA.
+    // A count of bytes that did not come back (0: good).
+    {
+        static uint8_t pat[256], back[256];
+        static char label[] = "colour ram $ff8.000 bad bytes:";
+        uint8_t sl, j;
+        uint16_t bad, o;
+        for (sl = 1; sl <= 7; sl++) {
+            uint32_t base = 0xFF80000UL + ((uint32_t)sl << 12);
+            for (j = 0; ; j++) {
+                pat[j] = (uint8_t)(j * 7 + sl * 31);
+                if (j == 255) break;
+            }
+            for (o = 0; o < 4096; o += 256)
+                m65_dma_copy(base + o, (uint32_t)(uintptr_t)pat, 256);
+            bad = 0;
+            for (o = 0; o < 4096; o += 256) {
+                m65_dma_copy((uint32_t)(uintptr_t)back, base + o, 256);
+                for (j = 0; ; j++) {
+                    if (back[j] != pat[j]) bad++;
+                    if (j == 255) break;
+                }
+            }
+            label[15] = "0123456789abcdef"[sl];
+            line(label, bad, "");
+        }
+        // A scaled read (as the wall columns are drawn: step 64/120) from
+        // the last slot, against the same from chip RAM holding the same.
+        for (o = 0; o < 4096; o += 256)
+            m65_dma_copy(CHIP + 0x20000 + o, (uint32_t)(uintptr_t)pat, 256);
+        m65_dma_scale(CHIP + 0x21000, 0xFF87000UL + 64, 120, 0x88, 1);
+        m65_dma_scale(CHIP + 0x21100, CHIP + 0x20000 + 64, 120, 0x88, 1);
+        m65_dma_copy((uint32_t)(uintptr_t)back, CHIP + 0x21000, 120);
+        m65_dma_copy((uint32_t)(uintptr_t)pat, CHIP + 0x21100, 120);
+        bad = 0;
+        for (j = 0; j < 120; j++)
+            if (back[j] != pat[j]) bad++;
+        line("scaled read from colour ram, bad:", bad, "");
+        // Filled as the game fills it: attic RAM to colour RAM, 4KB at once.
+        for (j = 0; ; j++) {
+            pat[j] = (uint8_t)(j ^ 0xA5);
+            if (j == 255) break;
+        }
+        for (o = 0; o < 4096; o += 256)
+            m65_dma_copy(ATTIC + 0x10000 + o, (uint32_t)(uintptr_t)pat, 256);
+        m65_dma_copy(0xFF87000UL, ATTIC + 0x10000, 4096);
+        bad = 0;
+        for (o = 0; o < 4096; o += 256) {
+            m65_dma_copy((uint32_t)(uintptr_t)back, 0xFF87000UL + o, 256);
+            for (j = 0; ; j++) {
+                if (back[j] != pat[j]) bad++;
+                if (j == 255) break;
+            }
+        }
+        line("attic to colour ram copy, bad:", bad, "");
+    }
+
     // The multiply and divide routines: edge cases, then random pairs of
     // assorted sizes.
     {
