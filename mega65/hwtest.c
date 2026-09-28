@@ -267,15 +267,16 @@ int main(void)
         ((void (*)(void))(uintptr_t)busy)();
     line("code in chip ram, 32 loops:", ms() - t, "ms");
 
-    // The same from attic RAM, mapped at $4000 as the game maps overlays.
+    // The same from attic RAM, mapped in as the game maps overlays (at
+    // $6000 here: this program has grown past $4000, where the game maps).
     m65_dma_copy(ATTIC, (uint32_t)(uintptr_t)busy, sizeof busy);
     __asm__ volatile(
         "lda #$81\n ldx #$0f\n ldy #0\n ldz #0\n map\n eom\n"   // lower MB: $81
-        "lda #$c0\n ldx #$4f\n ldy #0\n ldz #0\n map\n eom\n"   // $4000 -> $8100000
+        "lda #$a0\n ldx #$8f\n ldy #0\n ldz #0\n map\n eom\n"   // $6000 -> $8100000
         ::: "a", "x", "y");
     t = ms();
     for (i = 0; i < 32; i++)
-        ((void (*)(void))0x4000)();
+        ((void (*)(void))0x6000)();
     t = ms() - t;
     __asm__ volatile("lda #0\n ldx #0\n ldy #0\n ldz #0\n map\n eom\n" ::: "a", "x", "y");
     line("code in attic via $4000, 32 loops:", t, "ms");
