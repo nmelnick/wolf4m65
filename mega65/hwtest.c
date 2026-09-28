@@ -245,6 +245,8 @@ int main(void)
     row = 1;
     text("wolf3d hardware timing (lower is faster)");
     row++;
+    line("colour ram pointer at boot (colptr):",
+         *(volatile uint8_t *)0xD064 | *(volatile uint8_t *)0xD065 << 8, "");
 
     timer_start();
 

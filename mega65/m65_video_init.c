@@ -49,7 +49,10 @@ void m65_video_init(void)
     VICIV.chrcount = M65_CELLS_X;
     VICIV.scrnptr  = M65_SCREENRAM;
 
-    // Colour RAM (attributes) must be clear: 2 bytes per cell.
+    // Colour RAM (attributes) must be clear: 2 bytes per cell, from its
+    // start (COLPTR: the boot mode may have left it elsewhere, and the rest
+    // of colour RAM is the texture cache, id_pm.cpp).
+    VICIV.colptr = 0;
     m65_dma_fill(0xff80000UL, 0, M65_CELLS_X * M65_CELLS_Y * 2);
 
     // Full-colour character data is addressed as (cell number * 64) from
