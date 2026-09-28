@@ -85,7 +85,11 @@ static void CheckPage (int page)
 // cache stays good across levels.
 //
 #define TEXCACHE_BASE  0xFF81000UL
+#ifdef M65_TEXSLOTS
+#define TEXCACHE_SLOTS M65_TEXSLOTS     // (make TEXSLOTS=n: to test the machine's colour RAM)
+#else
 #define TEXCACHE_SLOTS 7
+#endif
 
 static int16_t  texpage[TEXCACHE_SLOTS];   // the page in each slot, plus one (0: none)
 static uint16_t texused[TEXCACHE_SLOTS];   // the frame each was last used in
