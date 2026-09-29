@@ -49,7 +49,7 @@ WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
             -DVERSIONALREADYCHOSEN -DCARMACIZED $(VFLAGS) $(VDEFS) -DMEGA65 -DNDEBUG \
-            $(if $(TEXSLOTS),-DM65_TEXSLOTS=$(TEXSLOTS)) \
+            $(if $(filter 0,$(SPRITECACHE)),-DM65_NOSPRITECACHE) \
             -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch \
             -mllvm -replexitval=never
 

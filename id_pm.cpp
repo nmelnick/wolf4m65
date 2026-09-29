@@ -210,7 +210,11 @@ farptr PM_GetTexture (int page)
 
 farptr PM_GetSprite (int shapenum)
 {
+#ifdef M65_NOSPRITECACHE                // (make SPRITECACHE=0: walls only, to compare)
+    return PM_GetPage(PMSpriteStart + shapenum);
+#else
     return CachedPage(PMSpriteStart + shapenum);
+#endif
 }
 
 farptr PM_GetPage (int page)

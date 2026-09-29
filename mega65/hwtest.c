@@ -56,9 +56,24 @@ __asm__(
     "  dey\n"
     "  bne 1b\n"
     "  ldz #0\n"
+    "  rts\n"
+    // the same over 30KB (120 pages): colour RAM's free part
+    "  .section .text.hw_read30k,\"ax\",@progbits\n"
+    "  .globl hw_read30k\n"
+    "hw_read30k:\n"
+    "  ldy #120\n"
+    "1: ldz #0\n"
+    "2: lda [hw_p],z\n"
+    "  inz\n"
+    "  bne 2b\n"
+    "  inc hw_p+1\n"
+    "  dey\n"
+    "  bne 1b\n"
+    "  ldz #0\n"
     "  rts\n");
 extern uint32_t hw_p;
 void hw_read64k(void);
+void hw_read30k(void);
 
 // ---- the math unit routines, against a reference --------------------------------
 
@@ -296,6 +311,24 @@ int main(void)
         hw_read64k();
     }
     line("read 8 x 64kb from attic ram:", ms() - t, "ms");
+
+    // The CPU reading 30KB, 16 times, from where the page cache can be
+    // (colour RAM: the cache; attic: the pages' home; chip for scale).
+    {
+        static const uint32_t from[3] = { CHIP, ATTIC, 0xFF80800UL };
+        static const char *const what[3] = {
+            "cpu read 16 x 30kb, chip ram:", "cpu read 16 x 30kb, attic ram:",
+            "cpu read 16 x 30kb, colour ram:" };
+        uint8_t k, f;
+        for (k = 0; k < 3; k++) {
+            t = ms();
+            for (f = 0; f < 16; f++) {
+                hw_p = from[k];
+                hw_read30k();
+            }
+            line(what[k], ms() - t, "ms");
+        }
+    }
 
     // DMA, 8 copies of 64000 bytes.
     t = ms();
