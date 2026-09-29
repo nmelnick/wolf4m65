@@ -1,7 +1,7 @@
 # Loading, pictures, fades and menus (hand-kept; after hot.txt, which comes
 # from the demo's profile): ovlgen puts these next into the overlays that
 # run from chip RAM, ahead of the rest of the HOTFILES (make profile-load).
-_Z13PM_GetTexturei
+id_pm___ZL14CachedPageMissi
 far_huff_expand
 m65_huff_run
 m65_vl___ZL9PlanarRow6farptriiiiiPh

@@ -9,6 +9,7 @@ _Z11HitVertWallv
 _Z12HitHorizWallv
 _Z10CalcHeightv
 _Z10PM_GetPagei
+_Z13PM_GetTexturei
 m65_udivmod
 __udivsi3
 __divsi3
@@ -17,6 +18,7 @@ __divhi3
 __umodsi3
 __umodhi3
 _Z11DrawScaledsv
+_Z12PM_GetSpritei
 wl_draw___ZL13ScaleShapeFariijjb
 __modsi3
 __modhi3

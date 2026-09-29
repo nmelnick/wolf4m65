@@ -30,10 +30,9 @@ farptr   PM_GetEnd ();
 farptr   PM_GetTexture (int wallpic);
 void     PM_NextFrame ();          // (the cache's clock: once per frame drawn)
 
-static inline farptr PM_GetSprite(int shapenum)
-{
-    return PM_GetPage(PMSpriteStart + shapenum);
-}
+// A sprite: from the sprite cache in colour RAM when it is there or can be
+// put there (id_pm.cpp), else in place in attic RAM.
+farptr   PM_GetSprite (int shapenum);
 
 static inline farptr PM_GetSound(int soundpagenum)
 {
