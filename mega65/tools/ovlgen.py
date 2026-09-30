@@ -22,7 +22,9 @@ Outputs (in --out):
 Policy (v1, deliberately simple): functions stay in source-file order.
 Overlays are filled first-fit in that order, keeping a file's functions
 together where they fit. Files listed in --resident-files and functions
-listed in --resident-funcs stay resident.
+listed in --resident-funcs stay resident. Functions nothing can reach
+(see prune) are left out of the overlays: as ordinary sections that nothing
+refers to, the linker drops them.
 """
 
 import argparse
@@ -121,6 +123,51 @@ def assemble_sizes(mods, cc, extra):
         for f in m.funcs:
             f.size = sizes.get(f.section, 0)
         os.remove(obj)
+
+
+IDENT_RE = re.compile(rf"(?<!{IDENT})[A-Za-z_.$][\w.$]*(?!{IDENT})")
+
+
+def prune(mods, extern, resident_files, resident_funcs):
+    """Mark the functions nothing can reach as resident ("unreachable"), so
+    that they take no room in the overlays; left as they are, in sections
+    nothing refers to, they are dropped by the linker. Reachable: the
+    resident objects' references (extern), resident and comdat functions,
+    whatever is named outside a function (data, aliases, ...), and what
+    those name, and so on. A name reaches every function of that name, in
+    any file (a superset: statics of the same name in other files too).
+    Wrong only on the safe side: a function kept out that something does
+    refer to stays resident, as a normal function."""
+    byname = {}
+    for m in mods:
+        for f in m.funcs:
+            byname.setdefault(f.name, []).append(f)
+    refs, todo = {}, set(extern)
+    for m in mods:
+        owner = [None] * len(m.lines)
+        for f in m.funcs:
+            owner[f.lo:f.hi] = [f] * (f.hi - f.lo)
+            refs[id(f)] = set()
+            if f.reason or m.stem in resident_files or f.name in resident_funcs \
+                    or f.final_name in resident_funcs:
+                todo.add(f.name)
+        for l, f in zip(m.lines, owner):
+            toks = IDENT_RE.findall(strip_comment(l))
+            (refs[id(f)] if f else todo).update(toks)
+    reached, seen = set(), set()
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for f in byname.get(name, ()):
+            if id(f) not in reached:
+                reached.add(id(f))
+                todo |= refs[id(f)] - seen
+    for m in mods:
+        for f in m.funcs:
+            if id(f) not in reached:
+                f.reason = "unreachable"
 
 
 CHIP_BASE = 0x20000          # chip RAM for overlays (the C65 ROM's, unused)
@@ -574,7 +621,8 @@ def emit_ld(path, nover, wbase, wsize, hi_end, highbss=HIGHBSS, lowbss=LOWBSS, p
 
 def report(path, mods, overlays, window):
     lines = []
-    res = [f for m in mods for f in m.funcs if not f.overlay]
+    res = [f for m in mods for f in m.funcs if not f.overlay and f.reason != "unreachable"]
+    dead = [f for m in mods for f in m.funcs if f.reason == "unreachable"]
     lines.append(f"window {window} bytes, {len(overlays)} overlays, "
                  f"{sum(len(o) for o in overlays)} overlay functions\n")
     for k, o in enumerate(overlays, 1):
@@ -587,6 +635,11 @@ def report(path, mods, overlays, window):
                  f"{sum(f.size for f in res)} bytes")
     for f in res:
         lines.append(f"  {f.module}:{f.name}  {f.size}  ({f.reason or 'not a plain function'})")
+    lines.append("")
+    lines.append(f"unreachable functions (left to the linker to drop): {len(dead)}, "
+                 f"{sum(f.size for f in dead)} bytes")
+    for f in dead:
+        lines.append(f"  {f.module}:{f.name}  {f.size}")
     with open(path, "w") as fh:
         fh.write("\n".join(lines) + "\n")
     return "\n".join(lines[:len(overlays) + 2])
@@ -616,6 +669,8 @@ def main():
                     help="every call through its thunk, even in one overlay (to trace them all)")
     ap.add_argument("--hot-files", default="",
                     help="comma-separated files whose functions come next (for --chip-slots)")
+    ap.add_argument("--keep-unreachable", action="store_true",
+                    help="put every function in an overlay, reachable or not (to compare)")
     args = ap.parse_args()
 
     assert args.window_base % 0x2000 == 0 and args.window_size % 0x2000 == 0
@@ -642,10 +697,13 @@ def main():
             p = l.split()
             if len(p) == 3 and not l.startswith("#"):
                 calls[(p[1], p[2])] = calls.get((p[1], p[2]), 0) + int(p[0])
-    overlays, nchip = plan(mods, args.window_size,
-                    set(filter(None, args.resident_files.split(","))),
-                    set(filter(None, args.resident_funcs.split(","))), args.per_file,
-                    args.chip_slots, hot, hot_files, calls)
+    resident_files = set(filter(None, args.resident_files.split(",")))
+    resident_funcs = set(filter(None, args.resident_funcs.split(",")))
+    extern = extern_refs(filter(None, args.extern_objs.split(",")))
+    if not args.keep_unreachable:
+        prune(mods, extern, resident_files, resident_funcs)
+    overlays, nchip = plan(mods, args.window_size, resident_files, resident_funcs,
+                           args.per_file, args.chip_slots, hot, hot_files, calls)
 
     # A name defined more than once (weak library definitions, possibly next
     # to our strong replacements): as the linker would, keep the strong one
@@ -664,8 +722,7 @@ def main():
                 f.dropped = True
     for m in mods:
         m.out = rewrite(m)
-    needed, low = link_calls(mods, extern_refs(filter(None, args.extern_objs.split(","))),
-                             thunk_all=args.thunk_all)
+    needed, low = link_calls(mods, extern, thunk_all=args.thunk_all)
     for m in mods:
         with open(os.path.join(args.out, m.stem + ".ovl.s"), "w") as f:
             f.write("\n".join(m.out))
