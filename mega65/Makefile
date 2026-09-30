@@ -125,6 +125,11 @@ $(GB)/m65_%.s: m65_%.cpp $(M65HDRS) $(wildcard $(WOLFDIR)/*.h)
 	@mkdir -p $(GB)
 	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -ffunction-sections -S -o $@ $<
 
+# (hand-written, and an overlay function like the compiler's)
+$(GB)/m65_trace.s: m65_trace.s
+	@mkdir -p $(GB)
+	cp $< $@
+
 $(GB)/m65_%.s: m65_%.c $(M65HDRS)
 	@mkdir -p $(GB)
 	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(VDEFS) -S -o $@ $<

@@ -112,9 +112,16 @@ short   midangle,angle;
 word    tilehit;
 int     pixx;
 
-short   xtile,ytile;
-short   xtilestep,ytilestep;
-int32_t    xintercept,yintercept;
+#ifdef MEGA65
+// In the zero page, for the ray caster's assembly (mega65/m65_trace.s) and
+// shorter code here.
+#define RAYVAR __attribute__((section(".zp.bss")))
+#else
+#define RAYVAR
+#endif
+short   xtile RAYVAR,ytile RAYVAR;
+short   xtilestep RAYVAR,ytilestep RAYVAR;
+int32_t    xintercept RAYVAR,yintercept RAYVAR;
 word    xstep,ystep;
 word    xspot,yspot;
 int     texdelta;
@@ -471,6 +478,42 @@ void GlobalScalePost(byte *vidbuf, unsigned pitch)
 
 #endif // MEGA65
 
+#ifdef MEGA65
+//
+// What the four Hit functions below share, once (the ray caster's code must
+// fit one overlay): this column is on the wall the last one was on (same), at
+// the texture column given, or on another. It draws the last column. True when
+// a wall begins: the caller then sets lastside, lastintercept and postsource.
+//
+static __attribute__((noinline)) boolean NextPost (boolean same, int texture)
+{
+    if(same)
+    {
+        ScalePost();
+        postx = pixx;
+        if((pixx&3) && texture == lasttexture)
+        {
+            wallheight[pixx] = wallheight[pixx-1];
+            return false;
+        }
+        wallheight[pixx] = CalcHeight();
+        postsource=POSTSOURCE_ADD(postsource,texture-lasttexture);
+        postwidth=1;
+        lasttexture=texture;
+        return false;
+    }
+
+    if(lastside!=-1) ScalePost();
+
+    lasttilehit=tilehit;
+    lasttexture=texture;
+    wallheight[pixx] = CalcHeight();
+    postx = pixx;
+    postwidth = 1;
+    return true;
+}
+#endif
+
 /*
 ====================
 =
@@ -494,6 +537,12 @@ void HitVertWall (void)
         xintercept += TILEGLOBAL;
     }
 
+#ifdef MEGA65
+    if(!NextPost(lastside==1 && lastintercept==xtile && lasttilehit==tilehit && !(lasttilehit & 0x40), texture))
+        return;
+    lastside=1;
+    lastintercept=xtile;
+#else
     if(lastside==1 && lastintercept==xtile && lasttilehit==tilehit && !(lasttilehit & 0x40))
     {
         if((pixx&3) && texture == lasttexture)
@@ -521,6 +570,7 @@ void HitVertWall (void)
     wallheight[pixx] = CalcHeight();
     postx = pixx;
     postwidth = 1;
+#endif
 
     if (tilehit & 0x40)
     {                                                               // check for adjacent doors
@@ -559,6 +609,12 @@ void HitHorizWall (void)
     else
         texture = TEXTUREMASK-texture;
 
+#ifdef MEGA65
+    if(!NextPost(lastside==0 && lastintercept==ytile && lasttilehit==tilehit && !(lasttilehit & 0x40), texture))
+        return;
+    lastside=0;
+    lastintercept=ytile;
+#else
     if(lastside==0 && lastintercept==ytile && lasttilehit==tilehit && !(lasttilehit & 0x40))
     {
         if((pixx&3) && texture == lasttexture)
@@ -586,6 +642,7 @@ void HitHorizWall (void)
     wallheight[pixx] = CalcHeight();
     postx = pixx;
     postwidth = 1;
+#endif
 
     if (tilehit & 0x40)
     {                                                               // check for adjacent doors
@@ -620,6 +677,11 @@ void HitHorizDoor (void)
     doornum = tilehit&0x7f;
     texture = ((xintercept-doorposition[doornum])>>TEXTUREFROMFIXEDSHIFT)&TEXTUREMASK;
 
+#ifdef MEGA65
+    if(!NextPost(lasttilehit==tilehit, texture))
+        return;
+    lastside=2;
+#else
     if(lasttilehit==tilehit)
     {
         if((pixx&3) && texture == lasttexture)
@@ -646,6 +708,7 @@ void HitHorizDoor (void)
     wallheight[pixx] = CalcHeight();
     postx = pixx;
     postwidth = 1;
+#endif
 
     switch(doorobjlist[doornum].lock)
     {
@@ -685,6 +748,11 @@ void HitVertDoor (void)
     doornum = tilehit&0x7f;
     texture = ((yintercept-doorposition[doornum])>>TEXTUREFROMFIXEDSHIFT)&TEXTUREMASK;
 
+#ifdef MEGA65
+    if(!NextPost(lasttilehit==tilehit, texture))
+        return;
+    lastside=2;
+#else
     if(lasttilehit==tilehit)
     {
         if((pixx&3) && texture == lasttexture)
@@ -711,6 +779,7 @@ void HitVertDoor (void)
     wallheight[pixx] = CalcHeight();
     postx = pixx;
     postwidth = 1;
+#endif
 
     switch(doorobjlist[doornum].lock)
     {
@@ -1572,22 +1641,34 @@ static M65_NOINLINE bool HitHorizPushwall (int32_t xstep, int32_t ystep)
 
 #ifdef MEGA65
 extern "C" {
-    uint8_t m65_trace (uint8_t entry);          // (m65_trace.c)
-    extern int32_t m65_rxstep, m65_rystep;
-    extern uint32_t m65_tm_base, m65_sv_base;
+    // (m65_trace.s)
+    void m65_raysetup (void);
+    uint8_t m65_trace (uint8_t entry);
+    extern int32_t m65_rxstep RAYVAR, m65_rystep RAYVAR;
+    extern uint8_t m65_trp[4] RAYVAR, m65_tmhi RAYVAR, m65_svd RAYVAR;
+    extern uint32_t m65_pa_base, m65_ft_base;
 }
 #endif
 
 void AsmRefresh()
 {
     int32_t xstep,ystep;
+#ifndef MEGA65
     longword xpartial,ypartial;
+#endif
     boolean playerInPushwallBackTile = tilemap[focaltx][focalty] == 64;
 #ifdef MEGA65
-    m65_tm_base = decltype(tilemap)::base;
-    m65_sv_base = decltype(spotvis)::base;
-    if(((m65_tm_base | m65_sv_base) & 0xFF) || (m65_tm_base ^ m65_sv_base) >> 24)
-        Quit("m65_trace: tilemap/spotvis must be 256-byte aligned");
+    // What m65_raysetup and m65_trace work from (m65_trace.s): tilemap and
+    // spotvis must be 256-byte aligned, each within one bank, the same.
+    uint32_t tm = decltype(tilemap)::base, sv = decltype(spotvis)::base;
+    if(((tm | sv) & 0xFF) || (tm ^ (tm + 0xFFF)) >> 16 || (sv ^ (sv + 0xFFF)) >> 16 || (tm ^ sv) >> 16)
+        Quit("m65_trace: tilemap/spotvis must be 256-byte aligned, in one bank");
+    m65_trp[2] = (uint8_t) (tm >> 16);
+    m65_trp[3] = (uint8_t) (tm >> 24);
+    m65_tmhi = (uint8_t) (tm >> 8);
+    m65_svd = (uint8_t) ((sv - tm) >> 8);
+    m65_pa_base = pixelangle.addr();
+    m65_ft_base = finetangent.addr();
 #endif
 
 #ifdef MEGA65
@@ -1599,10 +1680,13 @@ void AsmRefresh()
     {
         if(lowdetail && pixx)
             wallheight[pixx-1] = wallheight[pixx-2];
+        // The ray's start, as below, in assembly.
+        m65_raysetup();
+        xstep = m65_rxstep;
+        ystep = m65_rystep;
 #else
     for(pixx=0;pixx<viewwidth;pixx++)
     {
-#endif
         short angl=midangle+pixelangle[pixx];
         if(angl<0) angl+=FINEANGLES;
         if(angl>=3600) angl-=FINEANGLES;
@@ -1649,6 +1733,7 @@ void AsmRefresh()
         ytile=focalty+ytilestep;
         yspot=(word)((((uint32_t)xintercept>>16)<<mapshift)+ytile);
         texdelta=0;
+#endif
 
         // Special treatment when player is in back tile of pushwall
         if(playerInPushwallBackTile)
@@ -1691,12 +1776,10 @@ void AsmRefresh()
 
 #ifdef MEGA65
         //
-        // The two stepping loops below, in assembly (m65_trace.c): it steps
+        // The two stepping loops below, in assembly (m65_trace.s): it steps
         // the ray and hands back what needs the code here (the same code as
         // below: doors, pushwalls, walls, the map's edge).
         //
-        m65_rxstep = xstep;
-        m65_rystep = ystep;
         uint8_t entry = 0;
         for(;;)
         {

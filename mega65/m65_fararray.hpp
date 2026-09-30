@@ -51,6 +51,7 @@ public:
     // Use zeroed storage (init) or storage that already holds the data (use).
     void init (farptr storage) { base = storage.a; m65_dma_fill(base, 0, bytes()); }
     void use (farptr storage) { base = storage.a; }
+    uint32_t addr (void) const { return base; }     // (for assembly)
     static uint16_t bytes (void) { return (uint16_t) (sizeof(T) * N); }
 
     Ref operator[] (int i) const { return Ref(base + (uint16_t) (i * sizeof(T))); }

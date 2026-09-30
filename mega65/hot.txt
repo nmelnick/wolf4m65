@@ -4,7 +4,9 @@
 #  the sprite scaler with its caller)
 _Z10AsmRefreshv
 m65_trace
+m65_raysetup
 _Z9ScalePostv
+wl_draw___ZL8NextPostai
 _Z11HitVertWallv
 _Z12HitHorizWallv
 _Z10CalcHeightv
