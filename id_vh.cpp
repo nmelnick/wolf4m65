@@ -284,15 +284,14 @@ void LatchDrawPicScaledCoord (unsigned scx, unsigned scy, unsigned picnum)
 
 void FreeLatchMem()
 {
-#ifdef MEGA65
-    return;             // latches are loaded once and kept (see LoadLatchMem)
-#endif
+#ifndef MEGA65          // (MEGA65: latches are loaded once and kept, see LoadLatchMem)
     int i;
     for(i = 0; i < 2 + LATCHPICS_LUMP_END - LATCHPICS_LUMP_START; i++)
     {
         SDL_FreeSurface(latchpics[i]);
         latchpics[i] = NULL;
     }
+#endif
 }
 
 /*

@@ -34,17 +34,16 @@ VDEFS   = '-DM65_VSUFFIX="$(V)"'
 PRG     = $(if $(filter 1,$(V)),wolf.prg,wolf$(V).prg)
 D81NAME = $(if $(filter 1,$(V)),WOLF3D.D81,WOLF3D$(V).D81)
 
+# `make` alone builds the game.
+.DEFAULT_GOAL := $(PRG)
+
 # --- Wolf4SDL translation units --------------------------------------------
-# Not linkable yet: id_sd.cpp (sound) is replaced by a stub, and the libc
-# gaps (m65_libc.c) and SDL glue (m65_sdl.c) are still to be written.
-# -fno-lto so that `make size` reports real machine-code sizes.
 
 WOLFDIR  = ..
-# (id_vl.cpp is replaced by m65_vl.cpp on the MEGA65.)
+# (id_vl.cpp is replaced by m65_vl.cpp, id_sd.cpp by m65_sd.cpp.)
 WOLFSRCS = id_ca id_in id_pm id_us_1 id_vh wl_act1 wl_act2 wl_agent \
            wl_debug wl_draw wl_game wl_inter wl_main wl_menu wl_play \
            wl_state wl_text
-WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
@@ -52,16 +51,6 @@ WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
             $(if $(filter 0,$(SPRITECACHE)),-DM65_NOSPRITECACHE) $(if $(filter 0,$(CACHE)),-DM65_NOCACHE) \
             -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch \
             -mllvm -replexitval=never
-
-obj/%.o: $(WOLFDIR)/%.cpp m65_compat.h SDL.h
-	@mkdir -p obj
-	$(CXX) $(WOLFFLAGS) -c $< -o $@
-
-obj/m65_vl.o: m65_vl.cpp m65_compat.h SDL.h
-	@mkdir -p obj
-	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -c $< -o $@
-
-wolf-objs: $(WOLFOBJS)
 
 # --- The game ---------------------------------------------------------------------
 # Every game source and the overlay-able MEGA65 layers are compiled to
@@ -75,7 +64,7 @@ GAMEC     = m65_posix m65_dosw m65_huff m65_mapexp m65_sdl m65_kbd m65_test m65_
             m65_video_init m65_far_alloc
 GAMEASM   = $(addprefix $(GB)/,$(addsuffix .s,$(GAMECXX) $(GAMEC)))
 RESIDENTC = ovl/ovl_load.c m65_far.c m65_video.c m65_dos.c m65_platform.c m65_assert.c m65_math.c
-RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_draw.o $(GB)/m65_music.o $(GB)/m65_sfx.o $(GB)/m65_sidfx.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
+RESIDENT  = $(GB)/ovl_rt.o $(GB)/m65_prof.o $(GB)/m65_music.o $(GB)/m65_sfx.o $(GB)/m65_sidfx.o $(addprefix $(GB)/res_,$(notdir $(RESIDENTC:.c=.o)))
 
 # make OVLTRACE=1: log every overlay call on the serial port (slow).
 OVLRTFLAGS = $(if $(OVLTRACE),-Wa$(comma)-defsym$(comma)OVL_TRACE=1)
@@ -92,10 +81,6 @@ $(GB)/m65_sfx.o: m65_sfx.s
 	$(CC) -c -fno-lto -o $@ $<
 
 $(GB)/m65_music.o: m65_music.s
-	@mkdir -p $(GB)
-	$(CC) -c -fno-lto -o $@ $<
-
-$(GB)/m65_draw.o: m65_draw.s
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto -o $@ $<
 
@@ -410,14 +395,6 @@ test-dos: dostest.prg $(SDIMG)
 	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
 	python3 tools/check_dostest.py dostest.mem
 
-all: hello.prg vtest.prg
-
-hello.prg: hello.c
-	$(CC) $(CFLAGS) -o $@ $<
-
-vtest.prg: vtest.c m65_video.c m65_video_init.c m65_video.h
-	$(CC) $(CFLAGS) -o $@ vtest.c m65_video.c m65_video_init.c
-
 # Run the whole game headless for RUNSECS seconds; keeps the debug serial
 # output (wolf.ser), a memory dump and a screenshot of where it got to.
 RUNSECS ?= 60
@@ -588,11 +565,11 @@ check-frame: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA) $(HB)/wolf-host
 	python3 tools/check_frame.py frame.mem $(HB)/run/frame_$$(printf %04d $(FRAME)).raw \
 	  $(WOLFDIR)/wolfpal.inc frame_$(FRAME).png
 
-# Run a PRG headless for a while and save a screenshot: make shot PRG=vtest.prg
+# Run a PRG headless for a while and save a screenshot: make shot PRG=hwtest.prg
 shot: $(PRG)
 	timeout 60 $(XEMU) $(XEMUFLAGS) -prg $(PRG) -screenshot $(PRG:.prg=.png) -prgexit
 
 clean:
-	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
+	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf build
 
-.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu calltrace hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: clean shot sid sid-midi fps profile profile-load profile-menu calltrace hotlist sdcard dist run-wolf run-xemu host-frames check-frame test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy

@@ -360,17 +360,6 @@ static inline uint32_t ViewAddr (int x, int y)
 }
 
 //
-// The same scaling as below, on row indices rather than row*pitch offsets
-// (which overflow a 16-bit int for close walls): the texture column is
-// fetched with one DMA job, the column is built in a near buffer, and the
-// rows drawn are written to the screen with one DMA job (the framebuffer's
-// columns are every 8th byte).
-//
-// The column buffer (mega65/m65_draw.s), for the sprites.
-extern "C" byte m65_colbuf[];
-
-
-//
 // A wall column: one DMA copy that scales the texture column as it goes. The
 // wall is 2*yd rows high (from viewheight/2 - yd), and its 64 texels run
 // from top to bottom, so the source steps 32/yd texels a row (8.8 fixed

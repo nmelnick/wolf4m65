@@ -23,7 +23,6 @@ void PM_Shutdown();
 
 farptr   PM_GetPage (int page);
 uint32_t PM_GetPageSize (int page);
-farptr   PM_GetEnd ();
 
 // A wall (or door) texture: from the texture cache in colour RAM when it
 // is there or can be put there (id_pm.cpp), else in place in attic RAM.

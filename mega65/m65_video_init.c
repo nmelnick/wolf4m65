@@ -79,10 +79,3 @@ void m65_video_init(void)
     m65_dma_fill(M65_FB_BASE, 0, 32000);
     m65_dma_fill(M65_FB_BASE + 32000UL, 0, 32000);
 }
-
-void m65_put_scanline(unsigned x, unsigned y, const uint8_t *src, unsigned width)
-{
-    unsigned i;
-    for (i = 0; i < width; i += 8)
-        m65_dma_copy(m65_fb_addr(x + i, y), (uint32_t)(uintptr_t)(src + i), 8);
-}

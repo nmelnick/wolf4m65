@@ -11,13 +11,6 @@
 
 #include <stdint.h>
 
-#define MULTINA   (*(volatile uint32_t *)0xD770)
-#define MULTINB   (*(volatile uint32_t *)0xD774)
-#define MULTOUT_L (*(volatile uint32_t *)0xD778)
-#define MULTOUT_H (*(volatile uint32_t *)0xD77C)
-#define DIVOUT_H  (*(volatile uint32_t *)0xD76C)    // the integer part
-#define DIVBUSY   (*(volatile uint8_t *)0xD70F)
-
 // n / d (d = 0: all ones), and the remainder n % d in m65_rem.
 // Calling convention (llvm-mos): n in A, X, __rc2, __rc3; d in __rc4..__rc7;
 // the quotient back in A, X, __rc2, __rc3. Uses __rc8..__rc15 (caller-saved).

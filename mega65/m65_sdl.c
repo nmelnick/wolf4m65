@@ -28,9 +28,7 @@ int SDL_Init(Uint32 flags)
 
 void SDL_Quit(void) {}
 const char *SDL_GetError(void) { return "SDL error"; }
-void SDL_WM_SetCaption(const char *title, const char *icon) { (void)title; (void)icon; }
 SDL_GrabMode SDL_WM_GrabInput(SDL_GrabMode mode) { return mode; }
-int SDL_ShowCursor(int toggle) { (void)toggle; return 0; }
 
 // ---------------------------------------------------------------------------
 // Surfaces
@@ -60,23 +58,11 @@ SDL_Surface *SDL_CreateRGBSurface(Uint32 flags, int w, int h, int bpp,
     return s;
 }
 
-// The far pixels are not reclaimed: the far heap never frees (see m65_far.h).
-void SDL_FreeSurface(SDL_Surface *s)
-{
-    free(s);
-}
-
 // Palettes belong to the display only; the video layer sets it directly.
 int SDL_SetColors(SDL_Surface *s, SDL_Color *colors, int first, int n)
 {
     (void)s; (void)colors; (void)first; (void)n;
     return 1;
-}
-
-int SDL_SetPalette(SDL_Surface *s, int which, SDL_Color *colors, int first, int n)
-{
-    (void)which;
-    return SDL_SetColors(s, colors, first, n);
 }
 
 // Clip a w x h rectangle at (*x, *y) against 0..maxw x 0..maxh; adjusts the
@@ -124,12 +110,6 @@ int SDL_FillRect(SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 
 // The visible surface is displayed directly: nothing to flip.
 int SDL_Flip(SDL_Surface *s) { (void)s; return 0; }
-
-Uint32 SDL_MapRGB(SDL_PixelFormat *fmt, Uint8 r, Uint8 g, Uint8 b)
-{
-    (void)fmt; (void)r; (void)g; (void)b;
-    return 0;
-}
 
 int SDL_SaveBMP(SDL_Surface *s, const char *file) { (void)s; (void)file; return -1; }
 

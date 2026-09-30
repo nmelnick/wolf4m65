@@ -17,7 +17,6 @@ boolean  fullscreen = true;
 boolean  usedoublebuffering = true;
 unsigned screenWidth = 320;
 unsigned screenHeight = 200;
-unsigned screenBits = 8;
 
 static SDL_PixelFormat format8 = { 1 };
 static SDL_Surface screensurf, buffersurf;
@@ -34,7 +33,6 @@ unsigned curPitch;
 unsigned scaleFactor;
 
 boolean  screenfaded;
-unsigned bordercolor;
 
 // The start of a fade is kept in chip RAM (near memory is short), and read
 // back FADECHUNK colours at a time; each step is computed straight into
@@ -142,14 +140,6 @@ void VL_SetColor (int color, int red, int green, int blue)
     m65_set_color(color, red, green, blue);
 }
 
-void VL_GetColor (int color, int *red, int *green, int *blue)
-{
-    SDL_Color *col = &curpal[color];
-    *red = col->r;
-    *green = col->g;
-    *blue = col->b;
-}
-
 static void PushCurPal (void)
 {
     int i;
@@ -166,11 +156,6 @@ void VL_SetPalette (SDL_Color *palette, bool forceupdate)
         vl_curpalchanges++;
     }
     PushCurPal();
-}
-
-void VL_GetPalette (SDL_Color *palette)
-{
-    memcpy(palette, curpal, sizeof(SDL_Color) * 256);
 }
 
 // A step's colour between from and to: from + (to - from) * frac / 256
@@ -435,9 +420,4 @@ void VL_LatchToScreenScaledCoord (SDL_Surface *source, int xsrc, int ysrc,
     SDL_Rect srcrect = { (Sint16) xsrc, (Sint16) ysrc, (Uint16) width, (Uint16) height };
     SDL_Rect destrect = { (Sint16) scxdest, (Sint16) scydest, 0, 0 };
     SDL_BlitSurface(source, &srcrect, curSurface, &destrect);
-}
-
-void VL_ScreenToScreen (SDL_Surface *source, SDL_Surface *dest)
-{
-    SDL_BlitSurface(source, NULL, dest, NULL);
 }

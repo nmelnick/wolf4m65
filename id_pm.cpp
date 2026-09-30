@@ -249,11 +249,6 @@ uint32_t PM_GetPageSize (int page)
     return next - offs;
 }
 
-farptr PM_GetEnd ()
-{
-    return FAR_ADD(vswap, vswapsize);
-}
-
 #else
 
 // holds the whole VSWAP

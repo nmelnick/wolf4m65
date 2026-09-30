@@ -30,14 +30,9 @@ extern "C" {
 extern "C" {
 #endif
 
-// llvm-mos libm only provides fmin/fmax. These are implemented in m65_libc.c.
-double sin(double x);
-double tan(double x);
+// llvm-mos libm only provides fmin/fmax. These are implemented in m65_libm.c.
 double atan(double x);
 double atan2(double y, double x);
-double sqrt(double x);
-
-char *strdup(const char *s);
 
 #ifdef __cplusplus
 }

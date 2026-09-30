@@ -1,5 +1,5 @@
 // The stdio the game uses, without the KERNAL (gone after m65_takeover):
-//   - fopen/fread/fwrite/fseek/ftell/fclose over the file layer
+//   - fopen/fread/fwrite/fseek/fclose over the file layer
 //     (m65_posix.c: only save games and the config file can be written)
 //   - printf and friends print to the debug serial port: llvm-mos's printf
 //     calls __putchar for every character. There is no console input.
@@ -12,7 +12,7 @@
 
 #include "m65_debug.h"
 
-struct _FILE { int fd; int eof; };
+struct _FILE { int fd; };
 
 void __putchar(char c)
 {
@@ -22,6 +22,8 @@ void __putchar(char c)
 }
 
 // No console input (the KERNAL is gone; the game reads the keyboard itself).
+// Needed although nothing calls it: libc's stdio refers to it, and without
+// this one the link pulls in libc's, which breaks the library split.
 int __getchar(void)
 {
     return EOF;
@@ -48,7 +50,6 @@ FILE *fopen(const char *name, const char *mode)
         return NULL;
     }
     f->fd = fd;
-    f->eof = 0;
     return f;
 }
 
@@ -71,8 +72,6 @@ size_t fread(void *buf, size_t size, size_t n, FILE *f)
     got = read(f->fd, buf, total);
     if (got < 0)
         got = 0;
-    if ((size_t)got < total)
-        f->eof = 1;
     return (size_t)got / size;
 }
 
@@ -89,25 +88,6 @@ int fseek(FILE *f, long offset, int whence)
 {
     if (!f)
         return -1;
-    f->eof = 0;
     return lseek(f->fd, offset, whence) < 0 ? -1 : 0;
 }
 
-long ftell(FILE *f)
-{
-    return lseek(f->fd, 0, SEEK_CUR);
-}
-
-int feof(FILE *f)
-{
-    return f->eof;
-}
-
-char *strdup(const char *s)
-{
-    size_t n = strlen(s) + 1;
-    char *d = (char *)malloc(n);
-    if (d)
-        memcpy(d, s, n);
-    return d;
-}

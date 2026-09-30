@@ -80,11 +80,6 @@ void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count)
     dma_run(DMA_COPY_CMD, dst, src, count, 1, 0x100);
 }
 
-void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip)
-{
-    dma_run(DMA_COPY_CMD, dst, src, count, dstskip, 0x100);
-}
-
 void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip)
 {
     dma_run(DMA_FILL_CMD, dst, value, count, dstskip, 0x100);

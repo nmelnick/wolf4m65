@@ -69,7 +69,6 @@ void inline VL_ClearScreen(int color)
 // same as elsewhere.
 void VL_MemToLatch              (farptr source, int width, int height,
                                     SDL_Surface *destSurface, int x, int y);
-void VL_ScreenToScreen          (SDL_Surface *source, SDL_Surface *dest);
 void VL_MemToScreenScaledCoord  (farptr source, int width, int height, int scx, int scy);
 void VL_MemToScreenScaledCoord  (farptr source, int origwidth, int origheight, int srcx, int srcy,
                                     int destx, int desty, int width, int height);

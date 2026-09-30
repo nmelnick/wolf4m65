@@ -32,12 +32,6 @@ extern "C" {
 #define M65_COLUMN_STEP  8                         // next pixel down
 #define M65_CELLCOL_SIZE (M65_CELLS_Y * 64)        // one 8-pixel-wide strip: 1600
 
-static inline uint32_t m65_fb_addr(unsigned x, unsigned y)
-{
-    return M65_FB_BASE + (uint32_t)(x >> 3) * M65_CELLCOL_SIZE
-         + ((uint16_t)y << 3) + (x & 7);
-}
-
 void m65_video_init(void);
 
 // 8-bit-per-channel palette entry.
@@ -47,9 +41,8 @@ void m65_set_color(uint8_t index, uint8_t r, uint8_t g, uint8_t b);
 void m65_dma_fill(uint32_t dst, uint8_t value, uint16_t count);
 void m65_dma_copy(uint32_t dst, uint32_t src, uint16_t count);
 
-// The same, writing every `dstskip`-th destination byte (a column of the
+// The fill, writing every `dstskip`-th destination byte (a column of the
 // framebuffer is every 8th byte; see m65_video.h's layout).
-void m65_dma_copy_skip(uint32_t dst, uint32_t src, uint16_t count, uint8_t dstskip);
 void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dstskip);
 // Scaled copy: the source steps by srcstep (8.8 fixed point) per byte copied.
 // The sprite scaler's DMA jobs: m65_dma_col_setup sets the buffer's base and
@@ -64,10 +57,6 @@ void m65_dma_segs(uint16_t xoff, uint8_t n);
 
 void m65_dma_scale(uint32_t dst, uint32_t src, uint16_t count, uint16_t srcstep,
                    uint8_t dstskip);
-
-// Copy one linear scanline (width <= 320, x a multiple of 8) from normal
-// memory into the tiled framebuffer.
-void m65_put_scanline(unsigned x, unsigned y, const uint8_t *src, unsigned width);
 
 #ifdef __cplusplus
 }
