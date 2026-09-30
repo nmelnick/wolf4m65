@@ -9,14 +9,15 @@ addr(x, y) = (x >> 3) * 1600 + y * 8 + (x & 7). HOSTFRAME is the host's frame
 N, 320x200 row-major. Both are palette indices. OUT.png shows the MEGA65
 frame, the host frame and the differing pixels (white) side by side.
 """
-import re
 import sys
+
+from m65common import read, wolfpal
 
 FB2 = 0x50000
 W, H = 320, 200
 
-mem = open(sys.argv[1], "rb").read()
-host = open(sys.argv[2], "rb").read()
+mem = read(sys.argv[1])
+host = read(sys.argv[2])
 m65 = bytes(mem[FB2 + (x >> 3) * 1600 + y * 8 + (x & 7)] for y in range(H) for x in range(W))
 
 diff = [i for i in range(W * H) if m65[i] != host[i]]
@@ -32,9 +33,7 @@ if diff:
 
 if len(sys.argv) > 4:
     from PIL import Image
-    pal = [tuple(int(v) * 255 // 63 for v in m.groups())
-           for m in re.finditer(r"RGB\(\s*(\d+),\s*(\d+),\s*(\d+)\)",
-                                open(sys.argv[3]).read())]
+    pal = wolfpal(sys.argv[3])
     img = Image.new("RGB", (W * 3 + 16, H))
     bad = set(diff)
     for y in range(H):

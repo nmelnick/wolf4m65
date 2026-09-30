@@ -13,37 +13,19 @@ a caller may be resident code).
 """
 import collections
 import re
-import subprocess
 import sys
 
-OBJDUMP = "/home/nmelnick/opt/llvm-mos/bin/llvm-objdump"
-
-
-def symbols(elf):
-    """-> {section: sorted [(address, name)]} for the function symbols."""
-    out = subprocess.check_output([OBJDUMP, "-t", elf], text=True)
-    secs = collections.defaultdict(list)
-    for l in out.splitlines():
-        p = l.split()
-        if len(p) >= 5 and " F " in l:
-            secs[p[-3]].append((int(p[0], 16), p[-1]))
-    for k in secs:
-        secs[k].sort()
-    return secs
+from m65common import function_symbols, owner as owner_in
 
 
 def owner(table, addr):
-    best = None
-    for a, n in table:
-        if a > addr:
-            break
-        best = n
-    return best[:-5] if best and best.endswith(".body") else best
+    name = owner_in(table, addr)
+    return name.removesuffix(".body") if name else None
 
 
 def main():
     trace, elf, first, last, out = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
-    secs = symbols(elf)
+    secs = function_symbols(elf, untyped=False)
     resident = sorted(secs.get(".text", []) + secs.get(".midtext", []))
     line = re.compile(r"^([0-9A-F]{2}) ([0-9A-F]{4}) ([0-9A-F]{2}) ([0-9A-F]{4})$")
     counts = collections.Counter()

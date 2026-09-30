@@ -32,7 +32,7 @@ import re
 import subprocess
 import sys
 
-LLVM_SIZE = os.path.expanduser("~/opt/llvm-mos/bin/llvm-size")
+from m65common import llvm
 
 SECTION_RE = re.compile(r'^\s*\.section\s+(\.text\.[^\s,"]+)\s*,\s*"([^"]*)"')
 IDENT = r"[A-Za-z0-9_.$]"
@@ -112,7 +112,7 @@ def assemble_sizes(mods, cc, extra):
     for m in mods:
         obj = m.path + ".size.o"
         subprocess.check_call([cc, "-c", "-fno-lto", *extra, "-o", obj, m.path])
-        out = subprocess.check_output([LLVM_SIZE, "-A", obj], text=True)
+        out = subprocess.check_output([llvm("llvm-size"), "-A", obj], text=True)
         sizes = {}
         for line in out.splitlines():
             p = line.split()
@@ -372,8 +372,7 @@ def extern_refs(objects):
     """Undefined symbols of objects linked as they are (resident code)."""
     refs = set()
     for obj in objects:
-        out = subprocess.check_output([os.path.join(os.path.dirname(LLVM_SIZE), "llvm-nm"),
-                                       "-u", obj], text=True)
+        out = subprocess.check_output([llvm("llvm-nm"), "-u", obj], text=True)
         refs |= {l.split()[-1] for l in out.splitlines() if l.strip()}
     return refs
 

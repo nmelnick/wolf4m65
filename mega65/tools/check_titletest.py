@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """Check the memory dump of titletest.prg (see titletest.cpp)."""
-import re
-import struct
 import sys
 
-mem = open(sys.argv[1], "rb").read()
-ref = open(sys.argv[2]).read()
-want_a = int(re.search(r"REF_TITLE_SA (\d+)", ref).group(1))
-want_b = int(re.search(r"REF_TITLE_SB (\d+)", ref).group(1))
-fmt = "<BBHHIIHHBB"
-magic, title_ok, sa, sb, ms50, fade, ssa, ssb, fartext_ok, palette_ok = struct.unpack(fmt, mem[0x5FC00:0x5FC00 + struct.calcsize(fmt)])
+from m65common import read, ref_int, report, sums16, unpack, wolfpal
 
-sig = open(sys.argv[3], "rb").read()
-wa = wb = 0
-for v in sig:
-    wa = (wa + v) & 0xFFFF
-    wb = (wb + wa) & 0xFFFF
+mem = read(sys.argv[1])
+ref = open(sys.argv[2]).read()
+want_a = ref_int(ref, "REF_TITLE_SA")
+want_b = ref_int(ref, "REF_TITLE_SB")
+magic, title_ok, sa, sb, ms50, fade, ssa, ssb, fartext_ok, palette_ok = unpack("<BBHHIIHHBB", mem, 0x5FC00)
+
+wa, wb = sums16(read(sys.argv[3]))
 
 checks = [
     (f"displayed sign-on screen matches SIGNON.BIN ({ssa},{ssb} vs {wa},{wb})", (ssa, ssb) == (wa, wb)),
@@ -31,10 +26,8 @@ checks = [
 # This catches framebuffer layout and palette errors that read-back cannot.
 if len(sys.argv) > 5:
     from PIL import Image
-    title = open(sys.argv[4], "rb").read()
-    pal = [tuple(int(v) * 255 // 63 for v in m.groups())
-           for m in re.finditer(r"RGB\(\s*(\d+),\s*(\d+),\s*(\d+)\)",
-                                open(sys.argv[5]).read())]
+    title = read(sys.argv[4])
+    pal = wolfpal(sys.argv[5])
     shot = Image.open(sys.argv[6]).convert("RGB")
     bad = 0
     first = None
@@ -49,9 +42,4 @@ if len(sys.argv) > 5:
     checks.append((f"screenshot shows the title in the game palette ({bad} of "
                    f"{115 * 320} pixels differ; first {first})", bad == 0))
 
-fail = 0
-for name, ok in checks:
-    print(("PASS  " if ok else "FAIL  ") + name)
-    fail += not ok
-print(f"      30-step fade-in took {fade} ms")
-sys.exit(1 if fail else 0)
+report(checks, [f"30-step fade-in took {fade} ms"])

@@ -3,15 +3,19 @@
 import struct
 import sys
 
-log = [l.strip() for l in open(sys.argv[1], "rb").read().decode("latin-1").splitlines()]
+from m65common import read, report
+
+log = [l.strip() for l in read(sys.argv[1]).decode("latin-1").splitlines()]
 events = [l for l in log if l == "SAVED" or l.startswith("SAVE FAILED") or l.startswith("SAVEGAM")]
 created = "CREATED" in log
 SLOT = 32768
-saves = open(sys.argv[2], "rb").read()
+saves = read(sys.argv[2])
 config, save = saves[:SLOT], saves[SLOT:2 * SLOT]        # slot 0, slot 1 (SAVEGAM0)
 magic, length = save[:4], struct.unpack("<I", save[4:8])[0]
 
-checks = [
+print("serial log:", ", ".join(events))
+print(f"save game 0: {length} bytes")
+report([
     ("SAVES.DAT made by the game", created),
     ("config written on leaving the menu for the new game", events[:1] == ["SAVED"]),
     ("the save game written", events[1:2] == ["SAVED"]),
@@ -24,11 +28,4 @@ checks = [
     ("SAVES.DAT: save game 0 (slot 1): header", magic == b"WM65" and 0 < length <= SLOT - 16),
     ("SAVES.DAT: save game 0: the name", save[16:18] == b"a\0"),
     ("SAVES.DAT: the other slots empty", not any(saves[2 * SLOT:])),
-]
-print("serial log:", ", ".join(events))
-print(f"save game 0: {length} bytes")
-bad = 0
-for name, ok in checks:
-    print(("PASS  " if ok else "FAIL  ") + name)
-    bad += not ok
-sys.exit(1 if bad else 0)
+])

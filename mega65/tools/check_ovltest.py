@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Check the memory dump of the overlay test (ovltest/main.c)."""
-import struct
 import sys
 
-mem = open(sys.argv[1], "rb").read()
-fmt = "<BbHHHHHHiHBBHHH"
-magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur, layout_ok, rodata_at, objlist_at, inner20 = \
-    struct.unpack(fmt, mem[0x50000:0x50000 + struct.calcsize(fmt)])
+from m65common import read, report, unpack
 
-checks = [
+mem = read(sys.argv[1])
+magic, load_rc, sq7, add3, fib10, call_other5, tail4, deep6, big, after, cur, layout_ok, rodata_at, objlist_at, inner20 = \
+    unpack("<BbHHHHHHiHBBHHH", mem, 0x50000)
+
+report([
     ("test ran to the end", magic == 0xEE),
     (f"layout: table at ${rodata_at:04X} (mid, from the data file), objlist at ${objlist_at:04X} (high, zeroed)", layout_ok == 1),
     ("overlays loaded", load_rc == 0),
@@ -21,10 +21,4 @@ checks = [
     ("deep(6) == 6             (ping-pong between overlays)", deep6 == 6),
     ("add3(10,20,30) == 60     (still fine afterwards)", after == 60),
     ("via_inner(20) == 42      (direct call to a thunk-less function)", inner20 == 42),
-]
-bad = 0
-for name, ok in checks:
-    print(("PASS  " if ok else "FAIL  ") + name)
-    bad += not ok
-print(f"      __ovl_cur at end = {cur}")
-sys.exit(1 if bad else 0)
+], [f"__ovl_cur at end = {cur}"])

@@ -11,9 +11,11 @@ import subprocess
 import sys
 import tempfile
 
+from m65common import llvm
+
 elf, count, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 slot = int(sys.argv[4], 0) if len(sys.argv) > 4 else 0x2000
-objcopy = os.path.expanduser("~/opt/llvm-mos/bin/llvm-objcopy")
+objcopy = llvm("llvm-objcopy")
 
 with tempfile.TemporaryDirectory() as tmp, open(out, "wb") as f:
     for k in range(1, count + 1):

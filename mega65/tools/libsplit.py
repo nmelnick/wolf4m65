@@ -19,7 +19,8 @@ import os
 import re
 import subprocess
 
-BIN = os.path.expanduser("~/opt/llvm-mos/bin")
+from m65common import llvm
+
 CC = "mos-mega65-clang"
 HOT = {"mul.cc.obj", "shift.cc.obj", "rotate.cc.obj", "mem.c.obj"}
 # All bitcode libraries: none may be left for the final link, or LLD's LTO
@@ -53,7 +54,7 @@ def drop_functions(asm, names):
 
 
 def nm(obj):
-    out = subprocess.check_output([f"{BIN}/llvm-nm", obj], text=True)
+    out = subprocess.check_output([llvm("llvm-nm"), obj], text=True)
     defined, undefined = set(), set()
     for line in out.splitlines():
         p = line.split()
@@ -81,7 +82,7 @@ def main():
     info = {}                                       # member -> (asm, defined, undefined, init)
     for member, archive in sorted(members.items()):
         bc = os.path.join(args.out, member)
-        subprocess.check_call([f"{BIN}/llvm-ar", "x", archive, member], cwd=args.out)
+        subprocess.check_call([llvm("llvm-ar"), "x", archive, member], cwd=args.out)
         if open(bc, "rb").read(4) != b"BC\xc0\xde":
             continue                                # assembly member: normal link
         base = re.sub(r"\W", "_", member)

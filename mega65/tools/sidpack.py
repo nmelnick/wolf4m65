@@ -9,7 +9,8 @@ import os
 import struct
 import subprocess
 
-BIN = os.path.expanduser("~/opt/llvm-mos/bin")
+from m65common import llvm
+
 PAL_CLOCK = 985248
 
 
@@ -114,11 +115,11 @@ def build_player(tmp, rate):
     open(os.path.join(tmp, "player.ld"), "w").write(
         "SECTIONS { . = 0x1000; .text : { *(.text) } }\n")
     obj, elf, bin_ = (os.path.join(tmp, n) for n in ("player.o", "player.elf", "player.bin"))
-    subprocess.check_call([f"{BIN}/mos-common-clang", "-c", "-o", obj, src])
-    subprocess.check_call([f"{BIN}/ld.lld", "-e", "init", "-T", os.path.join(tmp, "player.ld"), "-o", elf, obj])
-    subprocess.check_call([f"{BIN}/llvm-objcopy", "-O", "binary", elf, bin_])
+    subprocess.check_call([llvm("mos-common-clang"), "-c", "-o", obj, src])
+    subprocess.check_call([llvm("ld.lld"), "-e", "init", "-T", os.path.join(tmp, "player.ld"), "-o", elf, obj])
+    subprocess.check_call([llvm("llvm-objcopy"), "-O", "binary", elf, bin_])
     syms = {}
-    for line in subprocess.check_output([f"{BIN}/llvm-nm", elf], text=True).splitlines():
+    for line in subprocess.check_output([llvm("llvm-nm"), elf], text=True).splitlines():
         p = line.split()
         if len(p) == 3:
             syms[p[2]] = int(p[0], 16)

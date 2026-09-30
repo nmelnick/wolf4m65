@@ -67,7 +67,9 @@ frame rate (a development aid).
 
 You need:
 
-- [llvm-mos](https://github.com/llvm-mos/llvm-mos-sdk) in `~/opt/llvm-mos`
+- [llvm-mos](https://github.com/llvm-mos/llvm-mos-sdk), its `bin` directory on the `PATH`
+  (the tools find its `llvm-nm` and so on beside `mos-mega65-clang`; or set
+  `LLVM_MOS_BIN` to that directory)
 - the shareware data (`*.WL1`), and for the registered build `*.WL6`, in the repository root (git ignores them)
 - for music: Bobby Prince's original MIDI files, named `NN - title.mid` as
   on the soundtrack (`03 - Get Them Before They Get You (E1M1).mid` and so

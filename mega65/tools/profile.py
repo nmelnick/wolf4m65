@@ -9,15 +9,14 @@ for the window at $4000-$5FFF. Each bucket goes to the function that
 contains it (functions are found from the ELF's symbols: those of section
 .ovlK for overlay K).
 """
-import bisect
-import os
 import re
 import struct
 import subprocess
 import sys
 from collections import Counter
 
-BIN = os.path.expanduser("~/opt/llvm-mos/bin")
+from m65common import function_symbols, owner as owner_in
+
 COPY = 0x40000
 WBASE, WEND = 0x4000, 0x6000
 
@@ -33,25 +32,17 @@ mem = open(dump, "rb").read()
 
 # Functions: (start, name) per region: None = outside the window, K = overlay K.
 funcs = {}
-out = subprocess.check_output([f"{BIN}/llvm-objdump", "-t", elf], text=True)
-for line in out.splitlines():
-    m = re.match(r"([0-9a-f]+)\s+(\S*)\s+(\S*)\s+(\S+)\s+[0-9a-f]+\s+(\S+)$", line)
-    if not m or m.group(3) not in ("F", ""):
-        continue
-    addr, section, name = int(m.group(1), 16), m.group(4), m.group(5)
+for section, table in function_symbols(elf).items():
     ovl = re.fullmatch(r"\.ovl(\d+)", section)
     if ovl:
-        funcs.setdefault(int(ovl.group(1)), []).append((addr, name))
-    elif section.startswith(".text") and not WBASE <= addr < WEND:
-        funcs.setdefault(None, []).append((addr, name))
-for v in funcs.values():
-    v.sort()
+        funcs[int(ovl.group(1))] = table
+    elif section.startswith(".text"):
+        funcs.setdefault(None, []).extend(s for s in table if not WBASE <= s[0] < WEND)
+funcs.setdefault(None, []).sort()
 
 
 def owner(region, addr):
-    table = funcs.get(region, [])
-    i = bisect.bisect_right(table, (addr, "\xff")) - 1
-    return table[i][1] if i >= 0 else f"?{addr:04x}"
+    return owner_in(funcs.get(region, []), addr) or f"?{addr:04x}"
 
 
 def demangle(names):
