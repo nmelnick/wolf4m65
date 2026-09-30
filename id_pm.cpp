@@ -194,6 +194,9 @@ __attribute__((always_inline)) static inline farptr CachedPage (int page)
     farptr r;
     uint8_t e;
 
+#ifdef M65_NOCACHE                      // (make CACHE=0: none, to compare)
+    return PM_GetPage(page);
+#endif
     if(!FAR_ISNULL(centof) && (e = far_peek(FAR_ADD(centof, page))) != 0)
     {
         cent[e - 1].used = cacheframe;

@@ -71,16 +71,42 @@ static void put_str(const char *s)
 }
 
 extern int8_t fpscounter;       // wl_draw.cpp
+extern int fps;                 // (the frame time counter's value, wl_draw.cpp)
 
 void FrameDumpHook(void)
 {
     static uint16_t frame;
     static Uint32 start;
+#ifdef M65_BENCH
+    static Uint32 benchstart;
+#endif
     Uint32 now = SDL_GetTicks();
 
     frame++;
+#ifdef M65_BENCH
+    // make BENCH=1: the first 1000 frames of the first demo (the same on
+    // every run), their average time in the frame time counter, then stop
+    // there: a benchmark to read off the screen of the real machine.
+    if (frame == 1001) {
+        fps = (int)((now - benchstart + 500) / 1000);
+        fpscounter = 1;
+        put_str("BENCH: ");
+        put_uint((now - benchstart) / 1000);
+        m65_debug_putc('.');
+        put_uint((now - benchstart) / 100 % 10);
+        m65_debug_puts(" ms/frame over 1000 demo frames");
+    }
+    if (frame == 1002) {
+        m65_debug_puts("TEST-DONE");
+        for (;;)
+            ;
+    }
+#endif
     if (frame == 1) {
         start = now;
+#ifdef M65_BENCH
+        benchstart = now;
+#endif
 #ifdef M65_FRAMEDUMP
         fpscounter = 0;         // (the host's frames have no frame rate counter)
 #endif

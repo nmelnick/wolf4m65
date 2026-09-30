@@ -49,7 +49,7 @@ WOLFOBJS = $(addprefix obj/,$(addsuffix .o,$(WOLFSRCS))) obj/m65_vl.o
 # Shareware Wolf3D v1.4, all optional extras off.
 WOLFFLAGS = -Os -fno-lto -I. -include m65_compat.h \
             -DVERSIONALREADYCHOSEN -DCARMACIZED $(VFLAGS) $(VDEFS) -DMEGA65 -DNDEBUG \
-            $(if $(filter 0,$(SPRITECACHE)),-DM65_NOSPRITECACHE) \
+            $(if $(filter 0,$(SPRITECACHE)),-DM65_NOSPRITECACHE) $(if $(filter 0,$(CACHE)),-DM65_NOCACHE) \
             -Wno-c++11-narrowing -Wno-pragma-pack -Wno-switch \
             -mllvm -replexitval=never
 
@@ -142,10 +142,11 @@ FORCE:
 # m65_test.c and "Host reference" below).
 $(GB)/frame.stamp: FORCE
 	@mkdir -p $(GB)
-	@echo '$(FRAME) $(PROFILE)' | cmp -s - $@ || echo '$(FRAME) $(PROFILE)' > $@
+	@echo '$(FRAME) $(PROFILE) $(BENCH)' | cmp -s - $@ || echo '$(FRAME) $(PROFILE) $(BENCH)' > $@
 $(GB)/m65_test.s: m65_test.c $(M65HDRS) $(GB)/frame.stamp
 	$(CC) -Os -fno-lto -Wall -I. -ffunction-sections $(VDEFS) $(if $(FRAME),-DM65_FRAMEDUMP=$(FRAME)) \
-	  $(if $(PROFILE),-DM65_PROFILE) $(if $(filter all,$(PROFILE)),-DM65_PROFILE_ALL) -S -o $@ $<
+	  $(if $(PROFILE),-DM65_PROFILE) $(if $(filter all,$(PROFILE)),-DM65_PROFILE_ALL) \
+	  $(if $(BENCH),-DM65_BENCH) -S -o $@ $<
 
 # Stage 1: a probe link of the game's code alone, to learn which library
 # members it pulls in. Stage 2: libsplit compiles those (bitcode) to
