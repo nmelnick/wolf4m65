@@ -34,6 +34,11 @@ void VL_FarPlanarToScreen (farptr pic)
     (void)pic;
     screen_calls++;
 }
+void VL_FarLinearToScreen (farptr pic)      // (a cached screen, see CA_CacheScreen)
+{
+    (void)pic;
+    screen_calls++;
+}
 
 // --- test ----------------------------------------------------------------------
 #define REPORT 0x50000UL

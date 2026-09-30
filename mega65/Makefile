@@ -340,11 +340,13 @@ build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_mapref.py $@
 
-M65LIB = m65_assert.c m65_libm.c m65_far.c m65_far_alloc.c m65_huff.c m65_mapexp.c m65_posix.c \
+# The MEGA65 layer's C files, compiled as C (-x c, after the C++ files) as
+# in the game: clang++ would take them for C++.
+M65LIB = m65_assert.c m65_libm.c m65_far.c m65_far_alloc.c m65_huff.c m65_mapexp.c m65_posix.c m65_dosw.c \
          m65_dos.c m65_video.c m65_video_init.c
 
 catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
-	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp $(M65LIB)
+	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp -x c $(M65LIB)
 
 test-ca: catest.prg $(SDIMG)
 	python3 tools/xrun.py 600 catest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
@@ -358,7 +360,7 @@ M65VID = m65_sdl.c m65_kbd.c m65_surf.c
 
 titletest.prg: titletest.cpp build/huffref.h m65_vl.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_vh.cpp $(M65LIB) $(M65VID)
 	$(CXX) $(WOLFFLAGS) -I$(WOLFDIR) -o $@ titletest.cpp m65_vl.cpp $(WOLFDIR)/id_ca.cpp \
-	  $(WOLFDIR)/id_vh.cpp $(M65LIB) $(M65VID)
+	  $(WOLFDIR)/id_vh.cpp -x c $(M65LIB) $(M65VID)
 
 test-title: titletest.prg $(SDIMG)
 	python3 tools/xrun.py 120 titletest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
@@ -370,7 +372,7 @@ test-title: titletest.prg $(SDIMG)
 # --- Far proxy types (map planes, actorat) ----------------------------------------
 
 proxytest.prg: proxytest.cpp m65_farword.hpp m65_fargrid.hpp $(M65LIB)
-	$(CXX) $(WOLFFLAGS) -o $@ proxytest.cpp $(M65LIB)
+	$(CXX) $(WOLFFLAGS) -o $@ proxytest.cpp -x c $(M65LIB)
 
 test-proxy: proxytest.prg
 	python3 tools/xrun.py 60 proxytest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
