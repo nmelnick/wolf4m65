@@ -8,7 +8,6 @@ _Z9ScalePostv
 _Z11HitVertWallv
 _Z12HitHorizWallv
 _Z10CalcHeightv
-_Z10PM_GetPagei
 _Z13PM_GetTexturei
 m65_udivmod
 __udivsi3

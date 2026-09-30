@@ -167,13 +167,22 @@ $(GB)/lib/overlay.txt: $(GB)/why.txt $(RESIDENT) tools/libsplit.py
 # chip RAM ($20000-$3FFFF, 16 slots): first the functions in hot.txt (by time
 # spent in the demo: make hotlist), then those in hot-ui.txt (loading, fades,
 # menus: by hand, from make profile-load), then the files in HOTFILES, in order.
+# Among those overlays, functions that call each other often go together
+# (calls.txt, from make calltrace): a call across overlays remaps the window.
 CHIPSLOTS = 16
 HOTFILES  = m65_vl,m65_surf,id_vh,id_us_1,m65_kbd,m65_sdl,id_in,id_pm,wl_play,wl_draw,\
             wl_agent,wl_act1,wl_state,wl_act2,divmod_cc_obj,wl_game
 
-$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py hot.txt hot-ui.txt
+# make THUNKALL=1: every call through a thunk (for make calltrace).
+$(GB)/thunkall.stamp: FORCE
+	@mkdir -p $(GB)
+	@echo '$(THUNKALL)' | cmp -s - $@ || echo '$(THUNKALL)' > $@
+
+$(GB)/ovl.ld: $(GAMEASM) $(GB)/lib/overlay.txt tools/ovlgen.py hot.txt hot-ui.txt $(GB)/thunkall.stamp \
+              $(wildcard calls.txt)
 	rm -f $(GB)/*.ovl.s
-	python3 tools/ovlgen.py --out $(GB) --resident-funcs main \
+	python3 tools/ovlgen.py --out $(GB) --resident-funcs main $(if $(THUNKALL),--thunk-all) \
+	  $(if $(wildcard calls.txt),--calls calls.txt) \
 	  --chip-slots $(CHIPSLOTS) --hot hot.txt,hot-ui.txt --hot-files '$(subst $(eval) ,,$(HOTFILES))' \
 	  --extern-objs $$(echo $(RESIDENT) $$(sed 's/\.s$$/.o/' $(GB)/lib/resident.txt) | tr ' ' ',') \
 	  $(GAMEASM) $$(cat $(GB)/lib/overlay.txt)
@@ -499,6 +508,20 @@ test-save: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
 	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(SDDIR)SAVES$(V).DAT build/SAVES$(V).GOT
 	python3 tools/check_savetest.py wolf.ser build/SAVES$(V).GOT
 
+# calls.txt: the calls between the game's functions in demo frames 101-200,
+# counted (tools/ovlcalls.py), from a build that routes every call through
+# the overlay runtime and logs it (THUNKALL, OVLTRACE: slow). ovlgen packs
+# functions that call each other often into the same overlay.
+calltrace: THUNKALL = 1
+calltrace: OVLTRACE = 1
+calltrace: FRAME = 201
+calltrace: KEYS = {6000,0x3C},{6300,0x7F}
+calltrace: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
+	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+	python3 tools/xrun.py 3000 build/calltrace.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg $(PRG)
+	python3 tools/ovlcalls.py build/calltrace.ser $(PRG).elf 101 200 calls.txt
+
 # hot.txt from a profile of the first 1000 demo frames.
 hotlist: FRAME = 1000
 hotlist: profile
@@ -567,4 +590,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf obj build
 
-.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: all clean shot sid sid-midi fps profile profile-load profile-menu calltrace hotlist sdcard dist run-wolf run-xemu host-frames check-frame wolf-objs size test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy

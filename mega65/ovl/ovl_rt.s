@@ -121,19 +121,7 @@ __ovl_call:
 
 
 .ifdef OVL_TRACE
-	; Debug: log "<id> <target>" for every call on the serial port.
-	lda	__ovl_id
-	jsr	.Lhex
-	lda	#' '
-	sta	$d643
-	clv
-	lda	__ovl_tgt+1
-	jsr	.Lhex
-	lda	__ovl_tgt
-	jsr	.Lhex
-	lda	#10
-	sta	$d643
-	clv
+	jsr	__ovl_trace		; (debug: see below)
 .endif
 
 	lda	__ovl_cur
@@ -163,6 +151,43 @@ __ovl_call:
 	jmp	(__ovl_tgt)
 
 .ifdef OVL_TRACE
+; Debug (make OVLTRACE=1): log "<cur> <caller> <id> <target>" for every call
+; on the serial port: the caller's overlay and return address (on the
+; stack's top: __ovl_call has taken the thunk's), the callee's overlay and
+; address. tools/ovlcalls.py makes a call graph of it. In .midtext: the PRG
+; has no room for it.
+	.section	.midtext.__ovl_trace,"ax",@progbits
+__ovl_trace:
+	lda	__ovl_cur
+	jsr	.Lhex
+	jsr	.Lspace
+	tsx				; (our own return address is on top now:
+	stx	__ovl_p			;  the caller's is under it)
+	tsy
+	sty	__ovl_p+1
+	ldy	#4
+	lda	(__ovl_p),y
+	jsr	.Lhex
+	ldy	#3
+	lda	(__ovl_p),y
+	jsr	.Lhex
+	jsr	.Lspace
+	lda	__ovl_id
+	jsr	.Lhex
+	jsr	.Lspace
+	lda	__ovl_tgt+1
+	jsr	.Lhex
+	lda	__ovl_tgt
+	jsr	.Lhex
+	lda	#10
+	sta	$d643
+	clv
+	rts
+.Lspace:
+	lda	#' '
+	sta	$d643
+	clv
+	rts
 .Lhex:
 	pha
 	lsr

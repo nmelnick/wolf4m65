@@ -96,6 +96,7 @@ Run them in `mega65/`.
 | `make profile` | sample where the time goes during the demo (`FRAME=N`: to frame N) |
 | `make profile-load` | the same from start-up to the first demo frame (sign-on, title, fades, loading) |
 | `make profile-menu` | the same through the menus to the first frame of a new game |
+| `make calltrace` | count the calls between the game's functions in the demo (`calls.txt`), for packing the code overlays (slow: every call is logged) |
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
 | `make test-save` | save a game and load it back, in Xemu |
 | `make test-host test-proxy test-ovl test-dos test-write test-load test-huff test-ca test-title` | the other tests |

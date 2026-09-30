@@ -127,7 +127,7 @@ CHIP_BASE = 0x20000          # chip RAM for overlays (the C65 ROM's, unused)
 
 
 def plan(mods, window, resident_files, resident_funcs, per_file=False,
-         chip_slots=0, hot_funcs=(), hot_files=()):
+         chip_slots=0, hot_funcs=(), hot_files=(), calls=None):
     """-> overlays (lists of Func; overlay k is overlays[k - 1]), and how many
     of them run from chip RAM: the first ones,
     up to chip_slots, run from chip RAM: they get the hot functions (in the
@@ -160,6 +160,8 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
                     fills[i] += f.size
                     f.overlay = i + 1
                     break
+        if calls:
+            bins = affinity_pack(bins, room, calls)
         overlays = [b for b in bins if b]
         assert all(bins[i] for i in range(len(overlays)))     # (filled in order)
         nchip = len(overlays)
@@ -195,6 +197,58 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
             f.overlay = len(overlays)     # ids start at 1
             fill += f.size
     return overlays, nchip
+
+
+def affinity_pack(bins, room, calls):
+    """Repack the chip RAM overlays' functions (bins) so that those calling
+    each other often share an overlay: a call between overlays maps the
+    window twice. calls: {(caller, callee): count} (make calltrace). Pairs
+    are joined heaviest first while the group fits an overlay; the groups
+    are then packed first-fit, largest first (whatever no longer fits
+    anywhere goes back to the overlays planned file by file)."""
+    funcs = [f for b in bins for f in b]
+    byname = {f.final_name: f for f in funcs}
+    weight = {}
+    for (a, b), n in calls.items():
+        if a in byname and b in byname and a != b:
+            key = (a, b) if a < b else (b, a)
+            weight[key] = weight.get(key, 0) + n
+    group = {f.final_name: [f] for f in funcs}
+    for (a, b), n in sorted(weight.items(), key=lambda kv: -kv[1]):
+        ga, gb = group[a], group[b]
+        if ga is gb or sum(f.size for f in ga) + sum(f.size for f in gb) > room:
+            continue
+        ga.extend(gb)
+        for f in gb:
+            group[f.final_name] = ga
+    groups, seen = [], set()
+    for f in funcs:
+        g = group[f.final_name]
+        if id(g) not in seen:
+            seen.add(id(g))
+            groups.append(g)
+    groups.sort(key=lambda g: -sum(f.size for f in g))
+    new, fills = [[] for _ in bins], [0] * len(bins)
+    for g in groups:
+        size = sum(f.size for f in g)
+        for i in range(len(new)):
+            if fills[i] + size <= room:
+                new[i].extend(g)
+                fills[i] += size
+                break
+        else:                               # (no room for the group whole)
+            for f in g:
+                for i in range(len(new)):
+                    if fills[i] + f.size <= room:
+                        new[i].append(f)
+                        fills[i] += f.size
+                        break
+                else:
+                    f.overlay = 0           # (planned with the rest later)
+    for i, b in enumerate(new):
+        for f in b:
+            f.overlay = i + 1
+    return new
 
 
 def rename_identifier(lines, old, new):
@@ -274,14 +328,17 @@ def rewrite(m):
 DIRECTIVES = re.compile(r"^\s*\.(globl|type|size|hidden|protected|weak|section)\b")
 
 
-def link_calls(mods, extern_refs):
+def link_calls(mods, extern_refs, thunk_all=False):
     """Pass 2, over all modules: a direct call or tail jump (jsr/jmp F) from a
     function in the same overlay as F goes straight to F.body; every other
     reference to F (another overlay, resident code, address taken, data, or
-    external resident objects) needs F's thunk. Returns the thunked names."""
+    external resident objects) needs F's thunk. Returns the thunked names.
+    thunk_all: every call goes through the thunk (slower: for tracing every
+    call, make calltrace)."""
     ovl_of = {f.final_name: f.overlay for m in mods for f in m.funcs
               if f.overlay and not getattr(f, "dropped", False)}
     needed = set(n for n in extern_refs if n in ovl_of)
+    direct = set()                  # (thunk_all: the calls that would be direct)
     ident = re.compile(rf"(?<!{IDENT})[A-Za-z_.$][\w.$]*(?!{IDENT})")
     for m in mods:
         lines = m.out
@@ -297,12 +354,18 @@ def link_calls(mods, extern_refs):
                 continue
             call = re.match(r"^(\s*(?:jsr|jmp)\s+)([A-Za-z_.$][\w.$]*)\s*$", code)
             if call and call.group(2) in ovl_of and blockovl[i] == ovl_of[call.group(2)]:
+                if thunk_all:
+                    direct.add(call.group(2))
+                    continue
                 lines[i] = call.group(1) + call.group(2) + ".body" + sep + comment
                 continue
             for tok in ident.findall(code):
                 if tok in ovl_of:
                     needed.add(tok)
-    return needed
+    # (thunk_all: the thunks only it needs; they go in low memory, where
+    # there is room, see emit_thunks)
+    extra = direct - needed
+    return needed | direct, extra
 
 
 def extern_refs(objects):
@@ -337,7 +400,7 @@ def make_tables(nover, wbase, wsize, nchip=0):
     return a, x, mb
 
 
-def emit_thunks(path, funcs, nover, wbase, wsize, aliases=(), needed=None, nchip=0):
+def emit_thunks(path, funcs, nover, wbase, wsize, aliases=(), needed=None, nchip=0, low=()):
     a, x, mb = make_tables(nover, wbase, wsize, nchip)
     with open(path, "w") as f:
         f.write("; Generated by ovlgen.py -- do not edit.\n")
@@ -349,7 +412,9 @@ def emit_thunks(path, funcs, nover, wbase, wsize, aliases=(), needed=None, nchip
                 continue                            # only called directly
             # One section per thunk, so the linker can drop unused ones (and
             # with them the overlay bodies nothing else refers to).
-            f.write(f'\t.section\t.text.ovlthunk.{n},"ax",@progbits\n')
+            # (low: in low memory, copied there with .rodata: the PRG is full)
+            sec = ".lowtext" if n in low else ".text"
+            f.write(f'\t.section\t{sec}.ovlthunk.{n},"ax",@progbits\n')
             bind = ".weak" if getattr(fn, "weak", False) else ".globl"
             f.write(f"\t{bind}\t{n}\n\t.type\t{n},@function\n{n}:\n")
             f.write(f"\tjsr\t__ovl_call\n\t.byte\t{fn.overlay}\n\t.short\t{n}.body\n")
@@ -433,7 +498,7 @@ SECTIONS {{
      * loaded with .data from the data file, so usable after m65_startup. */
     .midtext : {{ *(.midtext*) }} > mid AT> dataimg
 
-    .rodata : {{ INCLUDE rodata-sections.ld }} > lowmem AT> loadarea
+    .rodata : {{ INCLUDE rodata-sections.ld *(.lowtext.*) }} > lowmem AT> loadarea
     __rodata_start = ADDR(.rodata);
     __rodata_load_start = LOADADDR(.rodata);
     __rodata_size = SIZEOF(.rodata);
@@ -546,6 +611,10 @@ def main():
     ap.add_argument("--chip-slots", type=int, default=0,
                     help="overlays that run from chip RAM (at most 16: $20000-$3FFFF)")
     ap.add_argument("--hot", help="files (comma-separated) of hot function names, hottest first (for --chip-slots)")
+    ap.add_argument("--calls", help="call counts (count caller callee per line, "
+                    "make calltrace): pack frequent pairs into the same chip overlay")
+    ap.add_argument("--thunk-all", action="store_true",
+                    help="every call through its thunk, even in one overlay (to trace them all)")
     ap.add_argument("--hot-files", default="",
                     help="comma-separated files whose functions come next (for --chip-slots)")
     args = ap.parse_args()
@@ -568,10 +637,16 @@ def main():
         for path in args.hot.split(","):
             hot += [l.strip() for l in open(path) if l.strip() and not l.startswith("#")]
     hot_files = [h for h in args.hot_files.split(",") if h]
+    calls = {}
+    if args.calls and os.path.exists(args.calls):
+        for l in open(args.calls):
+            p = l.split()
+            if len(p) == 3 and not l.startswith("#"):
+                calls[(p[1], p[2])] = calls.get((p[1], p[2]), 0) + int(p[0])
     overlays, nchip = plan(mods, args.window_size,
                     set(filter(None, args.resident_files.split(","))),
                     set(filter(None, args.resident_funcs.split(","))), args.per_file,
-                    args.chip_slots, hot, hot_files)
+                    args.chip_slots, hot, hot_files, calls)
 
     # A name defined more than once (weak library definitions, possibly next
     # to our strong replacements): as the linker would, keep the strong one
@@ -590,7 +665,8 @@ def main():
                 f.dropped = True
     for m in mods:
         m.out = rewrite(m)
-    needed = link_calls(mods, extern_refs(filter(None, args.extern_objs.split(","))))
+    needed, low = link_calls(mods, extern_refs(filter(None, args.extern_objs.split(","))),
+                             thunk_all=args.thunk_all)
     for m in mods:
         with open(os.path.join(args.out, m.stem + ".ovl.s"), "w") as f:
             f.write("\n".join(m.out))
@@ -603,8 +679,9 @@ def main():
                 f = byname[target]
                 aliases.append((alias, f.overlay, f.final_name + ".body"))
     emit_thunks(os.path.join(args.out, "ovl_thunks.s"), ovl_funcs, len(overlays),
-                args.window_base, args.window_size, aliases, needed, nchip)
-    print(f"thunks: {len(needed)} of {len(ovl_funcs)} overlay functions need one")
+                args.window_base, args.window_size, aliases, needed, nchip, low)
+    print(f"thunks: {len(needed)} of {len(ovl_funcs)} overlay functions need one"
+          + (f" ({len(low)} in low memory, for --thunk-all)" if low else ""))
     emit_ld(os.path.join(args.out, "ovl.ld"), len(overlays), args.window_base,
             args.window_size, args.data_end)
     summary = report(os.path.join(args.out, "plan.txt"), mods, overlays, args.window_size)
