@@ -132,13 +132,14 @@ class Arrangement:
     """What a song needs beyond General MIDI: its own patches by channel (and
     by drum note), its tuning in cents, its tempo (a factor), and the low-pass
     filter its filt patches go through (cutoff: the 11-bit register value;
-    resonance 0-15; the same on every SID); seamless: it loops at its exact
-    length (not half a second after its last note, for the tails)."""
+    resonance 0-15; the same on every SID); filt_gm: the General MIDI patches
+    (PATCHES) go through it too; seamless: it loops at its exact length (not
+    half a second after its last note, for the tails)."""
     def __init__(self, patches=None, drums=None, cents=0.0, tempo=1.0, cutoff=None, res=0,
-                 seamless=False):
+                 filt_gm=False, seamless=False):
         self.patches, self.drums = patches or {}, drums or {}
         self.cents, self.tempo, self.cutoff, self.res = cents, tempo, cutoff, res
-        self.seamless = seamless
+        self.filt_gm, self.seamless = filt_gm, seamless
 
 
 def P(wave, a, d, s, r, pw=0x800, **kw):
@@ -315,6 +316,18 @@ ARRANGEMENTS = {
 }
 
 
+# Songs without an arrangement: the General MIDI patches through a low-pass.
+# Against FluidSynth renders of the 27 songs (FluidR3_GM, octave bands, the
+# first 60 s of each), the SID versions were too bright, +8 dB at 8 kHz on
+# average: sawtooths and pulses keep their harmonics right up, where sampled
+# instruments roll off. Through this low-pass, the average difference by band
+# fell from 4.7 to 4.1 dB (8 kHz: +1.8), better in 23 songs of 27 (cutoffs
+# 450-1100 tried; 550 the best balance). The drums stay unfiltered. (Fitting
+# each instrument's waveform and envelope to FluidSynth's, tried as well, made
+# the songs no closer: on the SID a waveform also sets a voice's loudness.)
+DEFAULT = Arrangement(cutoff=550, filt_gm=True)
+
+
 def freq_reg(hz):
     return max(sid_freq(hz), 1)
 
@@ -343,7 +356,7 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
     """resumable: every note writes all of its voice's setup, so that playing
     can start at any record (for the game, which resumes songs).
     arr: the song's Arrangement, if it has one."""
-    arr = arr or Arrangement()
+    arr = arr or DEFAULT
     tune = 2 ** (arr.cents / 1200)
     routing = [0, 0, 0]                 # the voices each SID's filter takes
     stolen = 0
@@ -421,6 +434,7 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
                 patch = arr.drums.get(note) or drum_patch(note)
             else:
                 patch = arr.patches.get(ch) or PATCHES[program[ch]]
+            gm = ch != 9 and ch not in arr.patches
             for offset in patch.chord:
                 v = pick(ch, patch)
                 if v.note is not None:
@@ -436,7 +450,7 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
                 v.level = level(ch, vel)
                 v.hz = hz = voice_pitch(v, ch)
                 if arr.cutoff is not None:
-                    route(t, v, patch.filt)
+                    route(t, v, patch.filt or gm and arr.filt_gm)
                 g = patch.glide
                 f = patch.raw if patch.raw else freq_reg(hz * (2 ** (g[0] / 12) if g else 1))
                 # (resumable: all of the voice's setup, even what it has already)
@@ -477,8 +491,22 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
                 rpn[ch] = (val, rpn[ch][1])
             elif cc == 100:
                 rpn[ch] = (rpn[ch][0], val)
+            elif cc in (99, 98):            # an NRPN: data entry is not for an RPN now
+                rpn[ch] = (127, 127)
             elif cc == 6 and rpn[ch] == (0, 0):
                 bendrange[ch] = val
+            elif cc == 121:                 # reset all controllers (GM: not volume, pan)
+                expression[ch], bend[ch], rpn[ch] = 127, 0.0, (127, 127)
+                for v in voices:
+                    if v.note and v.note[0] == ch:
+                        w(t, 1, v, 6, sustain(v) << 4 | v.patch.r)
+                        if not v.patch.hz and not v.patch.raw:
+                            v.hz = voice_pitch(v, ch)
+                            wf(t, v, v.hz)
+            elif cc == 123:                 # all notes off
+                for v in voices:
+                    if v.note and v.note[0] == ch:
+                        note_off(t, v)
         elif kind == 0xE0:
             bend[ch] = ((data[1] << 7 | data[0]) - 8192) / 8192 * bendrange[ch]
             for v in voices:
