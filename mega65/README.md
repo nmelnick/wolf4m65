@@ -76,9 +76,10 @@ You need:
   on), in `mega65/` (git ignores them). The build converts them into
   `build/MUSIC.DAT`. Neither the MIDI files nor `MUSIC.DAT` may be passed on,
   so `make dist` leaves the music out, like the game data.
-- Python 3; mtools (`mcopy`) and Xemu (`xemu-xmega65`) for the tests; VICE's
-  `c1541` for the disk image; `g++` for the host reference; Pillow (PIL) for
-  some checks
+- Python 3 with NumPy; mtools (`mcopy`) and Xemu (`xemu-xmega65`) for the
+  tests; VICE's `c1541` for the disk image; `g++` for the host reference and
+  for the sound effects (they are fitted to the original's, rendered through
+  the DOSBox OPL emulator: `host/oplfx.cpp`); Pillow (PIL) for some checks
 - for the tests: an Xemu SD card image in `~/.local/share/xemu-lgb/mega65/`
   (Xemu makes one on its first run). The tests use a copy, `build/sd.img`,
   with the game's files added; your own image is left alone.

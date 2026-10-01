@@ -174,12 +174,13 @@ void SD_Startup (void)
         && far_peek(FAR_ADD(musicfile, 4)) == 1;
     if (havemusic)
         numsongs = far_peek(FAR_ADD(musicfile, 5));
-    // SFX.DAT: "WSFX", version 2, sound count, tick rate, then 13 bytes per
-    // sound (offset, ticks, priority, control, AD, SR, pulse width).
+    // SFX.DAT: "WSFX", version 3, sound count, tick rate, then 15 bytes per
+    // sound (offset, ticks, priority, control, AD, SR, pulse width, low-pass
+    // cutoff ($FFFF: none)).
     sfxfile = m65_file_far("sfx" M65_VSUFFIX ".dat", &size);   // (SFX1.DAT, SFX6.DAT: per version)
     havesfx = !FAR_ISNULL(sfxfile) && size >= 8
         && far_peekl(sfxfile) == 0x58465357UL            // "WSFX"
-        && far_peek(FAR_ADD(sfxfile, 4)) == 2;
+        && far_peek(FAR_ADD(sfxfile, 4)) == 3;
     AdLibPresent = havemusic || havesfx;
 
     SIDMODE = (SIDMODE & 0x10) | 0x0F;  // 8580 sound (as the previews)
@@ -402,7 +403,7 @@ static boolean SD_PlaySIDEffect (soundnames sound)
 {
     if (SoundMode != sdm_AdLib || !havesfx)
         return false;
-    farptr e = FAR_ADD(sfxfile, 8 + (uint16_t) sound * 13);
+    farptr e = FAR_ADD(sfxfile, 8 + (uint16_t) sound * 15);
     uint32_t off = far_peekl(e);
     uint16_t ticks = far_peekw(FAR_ADD(e, 4)), prio = far_peekw(FAR_ADD(e, 6));
     if (!off || !ticks)
@@ -411,6 +412,7 @@ static boolean SD_PlaySIDEffect (soundnames sound)
         return false;
     uint8_t wave = far_peek(FAR_ADD(e, 8));
     uint16_t pw = far_peekw(FAR_ADD(e, 11));
+    uint16_t cutoff = far_peekw(FAR_ADD(e, 13));
 
     __asm__ volatile ("sei");
     m65_sidfx_on = 0;
@@ -419,6 +421,11 @@ static boolean SD_PlaySIDEffect (soundnames sound)
     SIDFX(6) = far_peek(FAR_ADD(e, 10));
     SIDFX(2) = (uint8_t) pw;
     SIDFX(3) = (uint8_t) (pw >> 8);
+    // The effect's own low-pass: the fourth SID plays nothing else.
+    SIDFX(0x15) = (uint8_t) (cutoff & 7);
+    SIDFX(0x16) = (uint8_t) (cutoff >> 3);
+    SIDFX(0x17) = cutoff == 0xFFFF ? 0 : 1;             // (voice 1 through it, or not)
+    SIDFX(0x18) = (uint8_t) ((cutoff == 0xFFFF ? 0 : 0x10) | 0x0F);
     m65_sidfx_ptr = sfxfile.a + off;
     m65_sidfx_left = ticks;
     m65_sidfx_acc = 60;                 // (the first tick on the next interrupt)

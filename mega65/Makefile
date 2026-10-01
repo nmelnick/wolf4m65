@@ -206,11 +206,17 @@ build/MUSIC.DAT: tools/midi2sid.py tools/sidpack.py $(if $(MIDINEWER),FORCE)
 # The AdLib sound effects for the fourth SID, from the game data (like the
 # music: built from the user's files, not to be passed on).
 # (Only when the version's data is there, like the music.)
+# Each effect is fitted to the original's sound: rendered as the original
+# plays it, through the DOSBox OPL emulator (host/oplfx.cpp).
 SFXDATA = $(if $(wildcard $(WOLFDIR)/AUDIOT.$(EXT)),build/SFX$(V).DAT)
-build/SFX$(V).DAT: tools/adlib2sid.py tools/imf2sid.py $(WOLFDIR)/AUDIOHED.$(EXT) $(WOLFDIR)/AUDIOT.$(EXT)
+build/SFX$(V).DAT: tools/adlib2sid.py tools/imf2sid.py build/oplfx $(WOLFDIR)/AUDIOHED.$(EXT) $(WOLFDIR)/AUDIOT.$(EXT)
 	@mkdir -p build/sid
-	python3 tools/adlib2sid.py $(WOLFDIR)/AUDIOHED.$(EXT) $(WOLFDIR)/AUDIOT.$(EXT) $@ \
+	python3 tools/adlib2sid.py $(WOLFDIR)/AUDIOHED.$(EXT) $(WOLFDIR)/AUDIOT.$(EXT) $@ --opl build/oplfx \
 	  --preview build/sid/SFX_PREVIEW.sid --model $(SIDMODEL)
+
+build/oplfx: host/oplfx.cpp $(WOLFDIR)/dosbox/dbopl.cpp $(WOLFDIR)/dosbox/dbopl.h
+	@mkdir -p build
+	$(HOSTCXX) -O2 -w -DUSE_GPL -Ihost -I$(WOLFDIR)/dosbox -o $@ host/oplfx.cpp $(WOLFDIR)/dosbox/dbopl.cpp
 
 # What the game loads besides the game data (copied onto the SD card).
 GAMEFILES = $(GB)/WOLF$(V).OVL $(GB)/WOLF$(V).DAT $(PORTDATA) $(MUSICDATA) $(SFXDATA)
