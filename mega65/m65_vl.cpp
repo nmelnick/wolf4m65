@@ -178,15 +178,17 @@ static int FadeFrom (SDL_Color *from, int j, int end)
     return n;
 }
 
-void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
+// The steps of a fade from the palette now to `to`: colour j to to[j], or
+// with `flat`, every colour to *to. (The final colour is the caller's.)
+// Inlined: each fade's loop compiled for its own case is as fast as the two
+// loops written out were; the shared one took a frame longer a fade.
+__attribute__((always_inline))
+static inline void FadeSteps (int start, int end, const SDL_Color *to, bool flat, int steps)
 {
     int         i,j,k,n;
     int32_t     frac;
     SDL_Color   from[FADECHUNK];
-
-    red = red * 255 / 63;
-    green = green * 255 / 63;
-    blue = blue * 255 / 63;
+    const SDL_Color *t;
 
     VL_WaitVBL(1);
     FadeStart();
@@ -202,9 +204,10 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
             n = FadeFrom(from, j, end);
             for (k=0;k<n;k++)
             {
-                curpal[j+k].r = FadeMix(from[k].r, red, frac);
-                curpal[j+k].g = FadeMix(from[k].g, green, frac);
-                curpal[j+k].b = FadeMix(from[k].b, blue, frac);
+                t = flat ? to : &to[j+k];
+                curpal[j+k].r = FadeMix(from[k].r, t->r, frac);
+                curpal[j+k].g = FadeMix(from[k].g, t->g, frac);
+                curpal[j+k].b = FadeMix(from[k].b, t->b, frac);
             }
         }
 
@@ -212,6 +215,16 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
         vl_curpalchanges++;
         PushCurPal();
     }
+}
+
+void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
+{
+    red = red * 255 / 63;
+    green = green * 255 / 63;
+    blue = blue * 255 / 63;
+
+    SDL_Color to = { (Uint8) red, (Uint8) green, (Uint8) blue, 0 };
+    FadeSteps(start, end, &to, true, steps);
 
 //
 // final color
@@ -223,34 +236,7 @@ void VL_FadeOut (int start, int end, int red, int green, int blue, int steps)
 
 void VL_FadeIn (int start, int end, SDL_Color *palette, int steps)
 {
-    int i,j,k,n;
-    int32_t frac;
-    SDL_Color from[FADECHUNK];
-
-    VL_WaitVBL(1);
-    FadeStart();
-
-//
-// fade through intermediate frames
-//
-    for (i=0;i<steps;i++)
-    {
-        frac = ((int32_t) i << 8) / steps;
-        for (j=start;j<=end;j+=n)
-        {
-            n = FadeFrom(from, j, end);
-            for (k=0;k<n;k++)
-            {
-                curpal[j+k].r = FadeMix(from[k].r, palette[j+k].r, frac);
-                curpal[j+k].g = FadeMix(from[k].g, palette[j+k].g, frac);
-                curpal[j+k].b = FadeMix(from[k].b, palette[j+k].b, frac);
-            }
-        }
-
-        VL_WaitVBL(1);
-        vl_curpalchanges++;
-        PushCurPal();
-    }
+    FadeSteps(start, end, palette, false, steps);
 
 //
 // final color
