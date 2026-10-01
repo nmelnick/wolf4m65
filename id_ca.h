@@ -43,8 +43,6 @@ extern  int   mapon;
 
 extern  mapptr mapsegs[MAPPLANES];
 #ifdef MEGA65
-// A raw audio chunk, in place in AUDIOT (replaces audiosegs[]).
-farptr CA_AudioChunk (int chunk);
 extern  FarArray<farptr, NUMCHUNKS> grsegs; // (behaves like farptr[NUMCHUNKS])
 #else
 extern  byte *audiosegs[NUMSNDCHUNKS];

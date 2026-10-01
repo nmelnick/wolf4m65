@@ -32,10 +32,9 @@ import re
 import struct
 import tempfile
 
-from sidpack import build_player, encode, psid
+from sidpack import build_player, encode, psid, sid_freq
 
 RATE = 200                      # player ticks per second
-PAL_CLOCK = 985248
 TRI, SAW, PUL, NOI = 0x10, 0x20, 0x40, 0x80
 
 
@@ -244,10 +243,7 @@ def drum_patch(note):
 
 
 def freq_reg(hz):
-    f = round(hz * 16777216 / PAL_CLOCK)
-    while f > 0xFFFF:
-        f >>= 1
-    return max(f, 1)
+    return max(sid_freq(hz), 1)
 
 
 def note_hz(note, bend=0.0):

@@ -14,6 +14,15 @@ from m65common import llvm
 PAL_CLOCK = 985248
 
 
+def sid_freq(hz):
+    """The SID frequency register value for hz (PAL clock); out of the SID's
+    range (above $FFFF), an octave down until it fits."""
+    f = round(hz * 16777216 / PAL_CLOCK)
+    while f > 0xFFFF:
+        f >>= 1
+    return f
+
+
 def encode(records, volume=0x0F):
     """(writes, delay) records -> the player's data: count, count * (register
     offset from $D400, value), delay in ticks (16 bits); a count of 0 ends."""

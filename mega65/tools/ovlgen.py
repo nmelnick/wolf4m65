@@ -19,12 +19,13 @@ Outputs (in --out):
   plan.txt          human readable plan and size report
   plan.json         same, machine readable
 
-Policy (v1, deliberately simple): functions stay in source-file order.
-Overlays are filled first-fit in that order, keeping a file's functions
-together where they fit. Files listed in --resident-files and functions
-listed in --resident-funcs stay resident. Functions nothing can reach
-(see prune) are left out of the overlays: as ordinary sections that nothing
-refers to, the linker drops them.
+Policy: functions listed in --resident-funcs stay resident, and functions
+nothing can reach (see prune) are left out of the overlays (as ordinary
+sections nothing refers to, the linker drops them). With --chip-slots, the
+first overlays run from chip RAM: they get the hot functions (--hot, in
+that order), then those of the --hot-files, and with --calls functions
+that call each other often share one. The rest are filled first-fit in
+source-file order, keeping a file's functions together where they fit.
 """
 
 import argparse
@@ -128,7 +129,7 @@ def assemble_sizes(mods, cc, extra):
 IDENT_RE = re.compile(rf"(?<!{IDENT})[A-Za-z_.$][\w.$]*(?!{IDENT})")
 
 
-def prune(mods, extern, resident_files, resident_funcs):
+def prune(mods, extern, resident_funcs):
     """Mark the functions nothing can reach as resident ("unreachable"), so
     that they take no room in the overlays; left as they are, in sections
     nothing refers to, they are dropped by the linker. Reachable: the
@@ -148,8 +149,7 @@ def prune(mods, extern, resident_files, resident_funcs):
         for f in m.funcs:
             owner[f.lo:f.hi] = [f] * (f.hi - f.lo)
             refs[id(f)] = set()
-            if f.reason or m.stem in resident_files or f.name in resident_funcs \
-                    or f.final_name in resident_funcs:
+            if f.reason or f.name in resident_funcs or f.final_name in resident_funcs:
                 todo.add(f.name)
         for l, f in zip(m.lines, owner):
             toks = IDENT_RE.findall(strip_comment(l))
@@ -173,7 +173,7 @@ def prune(mods, extern, resident_files, resident_funcs):
 CHIP_BASE = 0x20000          # chip RAM for overlays (the C65 ROM's, unused)
 
 
-def plan(mods, window, resident_files, resident_funcs, per_file=False,
+def plan(mods, window, resident_funcs, per_file=False,
          chip_slots=0, hot_funcs=(), hot_files=(), calls=None):
     """-> overlays (lists of Func; overlay k is overlays[k - 1]), and how many
     of them run from chip RAM: the first ones,
@@ -189,8 +189,8 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
         byname = {}
         for m in mods:
             for f in m.funcs:
-                if not f.reason and m.stem not in resident_files \
-                        and f.name not in resident_funcs and f.final_name not in resident_funcs:
+                if not f.reason and f.name not in resident_funcs \
+                        and f.final_name not in resident_funcs:
                     byname.setdefault(f.final_name, []).append(f)
         order = [f for n in hot_funcs for f in byname.get(n, [])]
         stems = {m.stem: m for m in mods}
@@ -223,9 +223,7 @@ def plan(mods, window, resident_files, resident_funcs, per_file=False,
         for f in m.funcs:
             if f.reason or f.overlay:
                 continue
-            if m.stem in resident_files:
-                f.reason = "resident file"
-            elif f.name in resident_funcs or f.final_name in resident_funcs:
+            if f.name in resident_funcs or f.final_name in resident_funcs:
                 f.reason = "resident function"
             else:
                 cand.append(f)
@@ -654,7 +652,6 @@ def main():
     ap.add_argument("--window-base", type=lambda s: int(s, 0), default=0x4000)
     ap.add_argument("--window-size", type=lambda s: int(s, 0), default=0x2000)
     ap.add_argument("--data-end", type=lambda s: int(s, 0), default=0xD000)
-    ap.add_argument("--resident-files", default="")
     ap.add_argument("--resident-funcs", default="")
     ap.add_argument("--extern-objs", default="",
                     help="comma-separated resident objects whose references need thunks")
@@ -697,12 +694,11 @@ def main():
             p = l.split()
             if len(p) == 3 and not l.startswith("#"):
                 calls[(p[1], p[2])] = calls.get((p[1], p[2]), 0) + int(p[0])
-    resident_files = set(filter(None, args.resident_files.split(",")))
     resident_funcs = set(filter(None, args.resident_funcs.split(",")))
     extern = extern_refs(filter(None, args.extern_objs.split(",")))
     if not args.keep_unreachable:
-        prune(mods, extern, resident_files, resident_funcs)
-    overlays, nchip = plan(mods, args.window_size, resident_files, resident_funcs,
+        prune(mods, extern, resident_funcs)
+    overlays, nchip = plan(mods, args.window_size, resident_funcs,
                            args.per_file, args.chip_slots, hot, hot_files, calls)
 
     # A name defined more than once (weak library definitions, possibly next

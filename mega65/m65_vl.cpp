@@ -130,14 +130,6 @@ void VL_FillPalette (int red, int green, int blue)
     PushCurPal();
 }
 
-void VL_SetColor (int color, int red, int green, int blue)
-{
-    SDL_Color col = { (Uint8) red, (Uint8) green, (Uint8) blue, 0 };
-    curpal[color] = col;
-    vl_curpalchanges++;
-    m65_set_color(color, red, green, blue);
-}
-
 static void PushCurPal (void)
 {
     int i;

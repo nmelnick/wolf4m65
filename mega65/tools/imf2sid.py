@@ -26,9 +26,8 @@ import os
 import struct
 import tempfile
 
-from sidpack import build_player, encode, psid
+from sidpack import build_player, encode, psid, sid_freq
 
-PAL_CLOCK = 985248
 IMF_RATE = 700
 STARTMUSIC = 261                    # 3 * LASTSOUND (audiowl6.h)
 SONGS = ("CORNER DUNGEON WARMARCH GETTHEM HEADACHE HITLWLTZ INTROCW3 NAZI_NOR "
@@ -77,10 +76,7 @@ def channel_voice(regs, c, v):
     fnum = regs[0xA0 + c] | (regs[0xB0 + c] & 3) << 8
     block = (regs[0xB0 + c] >> 2) & 7
     hz = fnum * 49716 / 2 ** (20 - block) * MULT[regs[0x20 + car] & 15]
-    f = round(hz * 16777216 / PAL_CLOCK)
-    while f > 0xFFFF:
-        f >>= 1                         # (out of the SID's range: an octave down)
-    v.freq = f
+    v.freq = sid_freq(hz)
 
     conn = regs[0xC0 + c] & 1
     car_tl = regs[0x40 + car] & 63

@@ -81,7 +81,7 @@ static maptype* mapheaderseg[NUMMAPS];
 #endif
 #ifdef MEGA65
 FarArray<farptr, NUMCHUNKS> grsegs;     // storage in chip RAM (CAL_SetupGrFile)
-static farptr grfar, audiofar, mapfar;  // VGAGRAPH, AUDIOT, GAMEMAPS in attic
+static farptr grfar, mapfar;            // VGAGRAPH, GAMEMAPS in attic
 static farptr grheadfar, audioheadfar;  // VGAHEAD, AUDIOHED: offsets read in place
 #else
 byte    *audiosegs[NUMSNDCHUNKS];
@@ -756,9 +756,6 @@ void CAL_SetupAudioFile (void)
     audiohandle = open(fname, O_RDONLY | O_BINARY);
     if (audiohandle == -1)
         CA_CannotOpen(fname);
-#ifdef MEGA65
-    audiofar = m65_file_far(fname, NULL);
-#endif
 }
 
 //==========================================================================
@@ -844,14 +841,8 @@ void CA_Shutdown (void)
 
 #ifdef MEGA65
 
-// Audio chunks are used in place, in their raw file format, from the copy of
-// AUDIOT in attic RAM. (The AdLib instrument header is not unpacked into an
-// AdLibSound: the MEGA65 sound code reads the raw layout.)
-
-farptr CA_AudioChunk (int chunk)
-{
-    return FAR_ADD(audiofar, AUDIOSTART(chunk));
-}
+// Audio chunks are not cached: the MEGA65 sound code plays data of its own
+// (m65_sd.cpp); only their sizes are asked for.
 
 int32_t CA_CacheAudioChunk (int chunk)
 {

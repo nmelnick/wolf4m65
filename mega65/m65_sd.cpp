@@ -283,11 +283,6 @@ void SD_FadeOutMusic (void)
         SD_MusicOff();                  // (as the original does for AdLib)
 }
 
-boolean SD_MusicPlaying (void)
-{
-    return m65_mus_on != 0;
-}
-
 boolean SD_SetMusicMode (SMMode mode)
 {
     boolean result = false;
