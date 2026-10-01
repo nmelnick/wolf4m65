@@ -9,27 +9,23 @@
 
 #include <stdint.h>
 #include "m65_far.h"
+#include "m65_farref.hpp"
 #include "m65_video.h"      // m65_dma_fill
 
 template <class T, int N>
 class FarPtrGrid
 {
 public:
-    class Ref
+    // A T * in far memory (FarRef), that also casts to an integer (tile
+    // codes) and takes ->.
+    class Ref : public FarRef<T *>
     {
     public:
-        constexpr explicit Ref (uint32_t addr) : a(addr) {}
+        using FarRef<T *>::FarRef;
+        using FarRef<T *>::operator=;
 
-        operator T * () const { return (T *) (uintptr_t) far_peekw(FAR(a)); }
-        explicit operator uintptr_t () const { return far_peekw(FAR(a)); }
+        explicit operator uintptr_t () const { return far_peekw(FAR(this->a)); }
         T *operator-> () const { return (T *) *this; }
-
-        Ref &operator= (T *p) { far_pokew(FAR(a), (uint16_t) (uintptr_t) p); return *this; }
-        // Copies the value, not the address.
-        Ref &operator= (const Ref &o) { return *this = (T *) o; }
-
-    private:
-        uint32_t a;
     };
 
     class Row

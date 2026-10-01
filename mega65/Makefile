@@ -371,7 +371,7 @@ test-title: titletest.prg $(SDIMG)
 
 # --- Far proxy types (map planes, actorat) ----------------------------------------
 
-proxytest.prg: proxytest.cpp m65_farword.hpp m65_fargrid.hpp $(M65LIB)
+proxytest.prg: proxytest.cpp m65_farref.hpp m65_fararray.hpp m65_fargrid.hpp $(M65LIB)
 	$(CXX) $(WOLFFLAGS) -o $@ proxytest.cpp -x c $(M65LIB)
 
 test-proxy: proxytest.prg

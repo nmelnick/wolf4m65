@@ -1,4 +1,4 @@
-// Proxy test: FarWordPtr (map planes) and FarPtrGrid (actorat) do exactly
+// Proxy test: FarPtr<uint16_t> (map planes) and FarPtrGrid (actorat) do exactly
 // what word * and T *[N][N] do, for every operation form the game code uses.
 // Each step is done on a near array and on its far twin; the results and the
 // final contents must agree.
@@ -7,7 +7,7 @@
 
 #include "m65_debug.h"
 #include "m65_far.h"
-#include "m65_farword.hpp"
+#include "m65_farref.hpp"
 #include "m65_fargrid.hpp"
 #include "m65_fararray.hpp"
 #include "m65_farstruct.hpp"
@@ -40,11 +40,11 @@ int main (void)
 {
     int i, x, y;
 
-    // --- FarWordPtr / FarWord ------------------------------------------------
+    // --- FarPtr<uint16_t> / FarRef<uint16_t> -----------------------------------
     farptr planefar = far_alloc_chip(sizeof nearplane);
-    FarWordPtr farplane(planefar);
+    FarPtr<uint16_t> farplane(planefar);
     uint16_t *np;
-    FarWordPtr fp;
+    FarPtr<uint16_t> fp;
 
     for (i = 0; i < N * N; i++) {                     // MAPSPOT-style writes
         nearplane[i] = (uint16_t) (i * 997 + 0x1234);

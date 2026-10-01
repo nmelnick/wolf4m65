@@ -56,10 +56,10 @@ static int numpages;
 static unsigned leftmargin[TEXTROWS];
 static unsigned rightmargin[TEXTROWS];
 #ifdef MEGA65
-// Articles stay in far memory (the help text alone is 13.5KB); FarText
+// Articles stay in far memory (the help text alone is 13.5KB); a FarPtr
 // behaves like a char pointer, so the layout code below is unchanged.
-#include "m65_fartext.hpp"
-typedef FarText textptr;
+#include "m65_farref.hpp"
+typedef FarPtr<char> textptr;
 #else
 typedef char *textptr;
 #endif

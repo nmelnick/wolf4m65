@@ -10,7 +10,7 @@
 #include "m65_surf.h"
 #include "m65_video.h"
 #include "m65_posix.h"
-#include "m65_fartext.hpp"
+#include "m65_farref.hpp"
 
 #include "build/huffref.h"
 
@@ -45,7 +45,7 @@ struct report {
     uint32_t ms_per_50_frames;  // SDL_GetTicks over 50 PAL frames (want ~1000)
     uint32_t fade_ms;           // how long the 30-step fade-in took
     uint16_t signon_sa, signon_sb;  // checksum of the displayed sign-on screen
-    uint8_t  fartext_ok;        // FarText walk of the help article matches
+    uint8_t  fartext_ok;        // FarPtr<char> walk of the help article matches
     uint8_t  palette_ok;        // after the fade: curpal and hardware == gamepal
 };
 
@@ -111,9 +111,9 @@ int main (void)
         a = b = 0;
     }
 
-    // FarText: walk the help article like a char pointer.
+    // FarPtr<char>: walk the help article like a char pointer.
     {
-        FarText t, u;
+        FarPtr<char> t, u;
         int32_t k, len = ref[T_HELPART].explen;
         uint16_t ta = 0, tb = 0;
         char c9;
