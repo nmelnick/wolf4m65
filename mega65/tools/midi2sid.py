@@ -369,7 +369,12 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
         r = routing[v.sid] | v.bit if on else routing[v.sid] & ~v.bit
         if r != routing[v.sid] or resumable:
             routing[v.sid] = r
-            out.append((t, 1, v.sid * 0x20 + 0x17, arr.res << 4 | r, resumable))
+            base = v.sid * 0x20
+            out.append((t, 1, base + 0x17, arr.res << 4 | r, resumable))
+            if resumable:               # (the filter's setup too: SID_Silence clears it)
+                out.append((t, 1, base + 0x15, arr.cutoff & 7, True))
+                out.append((t, 1, base + 0x16, arr.cutoff >> 3, True))
+                out.append((t, 1, base + 0x18, 0x10 | sidvolume, True))
 
     def level(ch, vel):
         return ((vel / 127) * volume[ch] / 127 * expression[ch] / 127) ** 0.5
@@ -536,9 +541,13 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
 # The game's songs (musicnames in audiowl6.h, in order) and the numbers of
 # their MIDI files ("NN - title.mid"). Checked against the shareware AdLib
 # data by notes and timing; the rest by title and the game's level table.
+# A third item is a title to prefer among the files of that number: the
+# title screen's song (NAZI_NOR, INTROSONG) is the Macintosh version's
+# title theme ("01 - Title.mid", see ARRANGEMENTS) where that file is there,
+# else the PC's ("01 - Horst-Wessel-Lied.mid").
 GAME_SONGS = [
     ("CORNER", 8), ("DUNGEON", 13), ("WARMARCH", 7), ("GETTHEM", 3),
-    ("HEADACHE", 12), ("HITLWLTZ", 24), ("INTROCW3", 14), ("NAZI_NOR", 1),
+    ("HEADACHE", 12), ("HITLWLTZ", 24), ("INTROCW3", 14), ("NAZI_NOR", 1, "Title"),
     ("NAZI_OMI", 9), ("POW", 5), ("SALUTE", 25), ("SEARCHN", 4),
     ("SUSPENSE", 6), ("VICTORS", 26), ("WONDERIN", 2), ("FUNKYOU", 20),
     ("ENDLEVEL", 21), ("GOINGAFT", 11), ("PREGNANT", 10), ("ULTIMATE", 18),
@@ -552,6 +561,11 @@ GAME_SONGS = [
 GAME_VOLUME = 12
 
 
+def song_title(path):
+    """"NN - title.mid" -> "title"."""
+    return re.sub(r"^\d+\s*-\s*", "", os.path.splitext(os.path.basename(path))[0])
+
+
 def write_game(path, mididir):
     """MUSIC.DAT for the game (mega65/m65_sd.cpp, m65_music.s):
          "WMUS", version 1, song count, ticks per second (16 bits),
@@ -559,14 +573,16 @@ def write_game(path, mididir):
          (the player's records, as in the .sid files).
     Songs whose MIDI file is missing are left out."""
     streams, found = [], 0
-    for name, num in GAME_SONGS:
-        files = [f for f in os.listdir(mididir)
-                 if re.match(rf"0*{num}\s*-.*\.mid$", f, re.I)]
+    for name, num, *prefer in GAME_SONGS:
+        files = sorted(f for f in os.listdir(mididir)
+                       if re.match(rf"0*{num}\s*-.*\.mid$", f, re.I))
+        files.sort(key=lambda f: song_title(f) not in prefer)
         if not files:
             streams.append(b"")
             continue
         events, end = read_midi(os.path.join(mididir, files[0]))
-        records, _ = convert(events, end, resumable=True, sidvolume=GAME_VOLUME)
+        records, _ = convert(events, end, resumable=True, sidvolume=GAME_VOLUME,
+                             arr=ARRANGEMENTS.get(song_title(files[0])))
         streams.append(encode(records, GAME_VOLUME))
         found += 1
     head = b"WMUS" + struct.pack("<BBH", 1, len(streams), RATE)
@@ -595,7 +611,7 @@ def main():
         code, init, play = build_player(tmp, RATE)
         for path in args.midi:
             title = os.path.splitext(os.path.basename(path))[0]
-            name = re.sub(r"^\d+\s*-\s*", "", title)
+            name = song_title(path)
             events, end = read_midi(path)
             records, secs = convert(events, end, arr=ARRANGEMENTS.get(name))
             data = encode(records)
