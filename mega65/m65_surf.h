@@ -15,6 +15,9 @@
 extern "C" {
 #endif
 
+// Every surface's pixel format: 8 bits a pixel (m65_sdl.c).
+extern SDL_PixelFormat m65_format8;
+
 uint32_t surf_addr(const SDL_Surface *s, unsigned x, unsigned y);
 
 void surf_write_row(const SDL_Surface *s, unsigned x, unsigned y,

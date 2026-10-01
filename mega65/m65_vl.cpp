@@ -18,7 +18,6 @@ boolean  usedoublebuffering = true;
 unsigned screenWidth = 320;
 unsigned screenHeight = 200;
 
-static SDL_PixelFormat format8 = { 1 };
 static SDL_Surface screensurf, buffersurf;
 
 SDL_Surface *screen = NULL;
@@ -60,7 +59,7 @@ void VL_Shutdown (void)
 
 static void InitTiledSurface (SDL_Surface *s, uint32_t base)
 {
-    s->format = &format8;
+    s->format = &m65_format8;
     s->w = M65_SCREEN_W;
     s->h = M65_SCREEN_H;
     s->pitch = M65_SCREEN_W;       // (only meaningful for linear surfaces)
@@ -402,7 +401,7 @@ void VL_FarLinearToScreen (farptr pic)
     SDL_Surface src;
 
     memset(&src, 0, sizeof src);
-    src.format = &format8;
+    src.format = &m65_format8;
     src.w = M65_SCREEN_W;
     src.h = M65_SCREEN_H;
     src.pitch = M65_SCREEN_W;

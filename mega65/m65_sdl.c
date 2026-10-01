@@ -35,7 +35,8 @@ SDL_GrabMode SDL_WM_GrabInput(SDL_GrabMode mode) { return mode; }
 // Surfaces
 // ---------------------------------------------------------------------------
 
-static SDL_PixelFormat format8 = { 1 };
+// The one pixel format: 8 bits (see m65_surf.h).
+SDL_PixelFormat m65_format8 = { 1 };
 
 SDL_Surface *SDL_CreateRGBSurface(Uint32 flags, int w, int h, int bpp,
                                   Uint32 rmask, Uint32 gmask, Uint32 bmask, Uint32 amask)
@@ -51,7 +52,7 @@ SDL_Surface *SDL_CreateRGBSurface(Uint32 flags, int w, int h, int bpp,
     if (!s)
         return NULL;
     s->flags = flags;
-    s->format = &format8;
+    s->format = &m65_format8;
     s->w = w;
     s->h = h;
     s->pitch = (Uint16)w;
