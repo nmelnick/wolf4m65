@@ -182,7 +182,7 @@ static void fail(const char *what, const char *file)
     screen_puts(TEXT_SCREEN, text_linestep, 1, what);
     screen_puts(TEXT_SCREEN, text_linestep, 2, file);
     screen_puts(TEXT_SCREEN, text_linestep, 4, "Copy the WOLF4M65 folder to the SD card,");
-    screen_puts(TEXT_SCREEN, text_linestep, 5, "with the game's *.WL1 files in it.");
+    screen_puts(TEXT_SCREEN, text_linestep, 5, "with the game's *.WL" M65_VSUFFIX " files in it.");  // (Makefile)
     for (;;)
         VIC(0x20) = 2;
 }

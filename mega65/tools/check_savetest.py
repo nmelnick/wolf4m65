@@ -19,7 +19,7 @@ report([
     ("SAVES.DAT made by the game", created),
     ("config written on leaving the menu for the new game", events[:1] == ["SAVED"]),
     ("the save game written", events[1:2] == ["SAVED"]),
-    ("the save game read back", "SAVEGAM0.WL1" in events[2:]),
+    ("the save game read back", any(e.startswith("SAVEGAM0.") for e in events[2:])),
     ("loaded without complaint (the menu closed: config written)",
      events[-1:] == ["SAVED"] and len(events) >= 4),
     ("no write failed", not any(e.startswith("SAVE FAILED") for e in events)),

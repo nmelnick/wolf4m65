@@ -94,7 +94,7 @@ $(GB)/ovl_rt.o: ovl/ovl_rt.s $(GB)/ovltrace.stamp
 
 $(GB)/res_%.o: %.c $(M65HDRS)
 	@mkdir -p $(GB)
-	$(CC) -Os -fno-lto -Wall -I. -DM65_RESIDENT -c -o $@ $<
+	$(CC) -Os -fno-lto -Wall -I. -DM65_RESIDENT $(VDEFS) -c -o $@ $<
 
 $(GB)/res_%.o: ovl/%.c
 	@mkdir -p $(GB)
@@ -287,7 +287,7 @@ $(OT)/ovl.ld: $(OT)/ov1.s $(OT)/ov2.s $(OT)/main.o tools/ovlgen.py
 	  $(OT)/ov1.s $(OT)/ov2.s
 
 ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c m65_far.c
-	$(CC) -Os -fno-lto -Wall -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ $(OT)/main.o \
+	$(CC) -Os -fno-lto -Wall $(VDEFS) -T $(OT)/ovl.ld -Wl,--no-check-sections -o $@ $(OT)/main.o \
 	  $(OT)/ov1.ovl.s $(OT)/ov2.ovl.s $(OT)/ovl_thunks.s ovl/ovl_rt.s \
 	  ovl/ovl_load.c m65_dos.c m65_video.c m65_platform.c m65_far.c
 	python3 tools/ovlpack.py $@.elf $$(grep -c '^overlay' $(OT)/plan.txt) $(OT)/OVLTEST.OVL
