@@ -72,19 +72,7 @@ comma = ,
 $(GB)/ovltrace.stamp: FORCE
 	@mkdir -p $(GB)
 	@echo '$(OVLTRACE)' | cmp -s - $@ || echo '$(OVLTRACE)' > $@
-$(GB)/m65_sidfx.o: m65_sidfx.s
-	@mkdir -p $(GB)
-	$(CC) -c -fno-lto -o $@ $<
-
-$(GB)/m65_sfx.o: m65_sfx.s
-	@mkdir -p $(GB)
-	$(CC) -c -fno-lto -o $@ $<
-
-$(GB)/m65_music.o: m65_music.s
-	@mkdir -p $(GB)
-	$(CC) -c -fno-lto -o $@ $<
-
-$(GB)/m65_prof.o: m65_prof.s
+$(GB)/%.o: %.s
 	@mkdir -p $(GB)
 	$(CC) -c -fno-lto -o $@ $<
 
@@ -238,17 +226,27 @@ $(SAVEFILES):
 	@mkdir -p build
 	head -c $$((11 * 32768)) /dev/zero > $@
 
-# The game's directory on the SD card (m65_posix.c: m65_dos_subdir).
-SDDIR = s:/WOLF4M65/
+# The game's directory on the SD card (m65_posix.c: m65_dos_subdir), and
+# mtools on the SD image (SDCOPY files... s:/DIR copies files onto it).
+SDDIR  = s:/WOLF4M65/
+MTOOLS = MTOOLSRC=$(abspath build/mtoolsrc)
+SDCOPY = $(MTOOLS) mcopy -o
+
+# Run test program NAME.prg in Xemu (at most SECS seconds) until it says
+# TEST-DONE, keeping NAME.ser and NAME.mem, and show a Quit message if it
+# left one: $(call RUNTEST,SECS,NAME[,more Xemu options]).
+RUNTEST = python3 tools/xrun.py $(1) $(2).ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
+	  -sdimg $(SDIMG) -prg $(2).prg -dumpmem $(2).mem $(3) && \
+	  { tr -d '\r' < $(2).ser | grep -a -A1 '^QUIT:' || true; }
 
 # The test programs read from the root directory, the game from WOLF4M65.
 $(SDIMG): $(XEMUDIR)/mega65.img $(wildcard testsd/*) $(GAMEDATA) $(PORTDATA) $(SAVEFILES)
 	@mkdir -p build
 	cp --sparse=always $< $@
 	printf 'mtools_skip_check=1\ndrive s: file="$(abspath $@)" offset=1048576\n' > build/mtoolsrc
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o testsd/* $(GAMEDATA) $(PORTDATA) s:
-	MTOOLSRC=$(abspath build/mtoolsrc) mmd $(patsubst %/,%,$(SDDIR))
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEDATA) $(PORTDATA) $(SAVEFILES) $(SDDIR)
+	$(SDCOPY) testsd/* $(GAMEDATA) $(PORTDATA) s:
+	$(MTOOLS) mmd $(patsubst %/,%,$(SDDIR))
+	$(SDCOPY) $(GAMEDATA) $(PORTDATA) $(SAVEFILES) $(SDDIR)
 
 # Hardware timing test (see hwtest.c): on the D81 as HWTEST.
 hwtest.prg: hwtest.c m65_video.c m65_video.h m65_math.c m65_hwdiv.c
@@ -283,9 +281,8 @@ ovltest.prg: $(OT)/ovl.ld $(OT)/main.o ovl/ovl_rt.s ovl/ovl_load.c m65_dos.c m65
 	llvm-objcopy -O binary --only-section=.rodata_far --only-section=.midtext --only-section=.data $@.elf $(OT)/OVLTEST.DAT
 
 test-ovl: ovltest.prg $(SDIMG)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(OT)/OVLTEST.OVL $(OT)/OVLTEST.DAT s:
-	python3 tools/xrun.py 60 ovltest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg ovltest.prg -dumpmem ovltest.mem
+	$(SDCOPY) $(OT)/OVLTEST.OVL $(OT)/OVLTEST.DAT s:
+	$(call RUNTEST,60,ovltest)
 	python3 tools/check_ovltest.py ovltest.mem
 
 # --- Equivalence tests for changes to the game code --------------------------
@@ -330,9 +327,7 @@ catest.prg: catest.cpp build/huffref.h build/mapref.h $(WOLFDIR)/id_ca.cpp $(WOL
 	$(CXX) $(WOLFFLAGS) -o $@ catest.cpp $(WOLFDIR)/id_ca.cpp $(WOLFDIR)/id_pm.cpp -x c $(M65LIB)
 
 test-ca: catest.prg $(SDIMG)
-	python3 tools/xrun.py 600 catest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg catest.prg -dumpmem catest.mem
-	@tr -d '\r' < catest.ser | grep -a -A1 '^QUIT:' || true
+	$(call RUNTEST,600,catest)
 	python3 tools/check_catest.py catest.mem build/huffref.h build/mapref.h $(WOLFDIR)/VSWAP.WL1
 
 # --- Title test: id_ca + id_vh + the MEGA65 video layer ----------------------------
@@ -344,9 +339,7 @@ titletest.prg: titletest.cpp build/huffref.h m65_vl.cpp $(WOLFDIR)/id_ca.cpp $(W
 	  $(WOLFDIR)/id_vh.cpp -x c $(M65LIB) $(M65VID)
 
 test-title: titletest.prg $(SDIMG)
-	python3 tools/xrun.py 120 titletest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg titletest.prg -dumpmem titletest.mem -screenshot titletest.png
-	@tr -d '\r' < titletest.ser | grep -a -A1 '^QUIT:' || true
+	$(call RUNTEST,120,titletest,-screenshot titletest.png)
 	python3 tools/check_titletest.py titletest.mem build/huffref.h build/SIGNON.BIN \
 	  build/TITLE.RAW $(WOLFDIR)/wolfpal.inc titletest.png
 
@@ -367,17 +360,26 @@ writetest.prg: writetest.c m65_dos.c m65_dosw.c m65_dos.h m65_video.c m65_video.
 
 test-write: writetest.prg $(SDIMG)
 	head -c 1024 /dev/zero > build/TESTW.BIN
-	MTOOLSRC=$(abspath build/mtoolsrc) mmd s:/WOLF4M65 2>/dev/null || true
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o build/TESTW.BIN testsd/test.bin s:/WOLF4M65/
-	python3 tools/xrun.py 90 writetest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg writetest.prg -dumpmem writetest.mem
+	$(MTOOLS) mmd s:/WOLF4M65 2>/dev/null || true
+	$(SDCOPY) build/TESTW.BIN testsd/test.bin s:/WOLF4M65/
+	$(call RUNTEST,90,writetest)
 	python3 tools/check_writetest.py writetest.mem
+
+# Key scripts (see KEYS above; the serial log shows each key as K and its
+# scancode). DEMOKEYS: SPACE for the sign-on's "Press a key": then the demos
+# run. MENUKEYS: on to a new game: ESC to skip the PG-13 screen, ESC at the
+# title for the menu, down four times from "Read This!" (wrapping) to "New
+# Game", then RETURN for it, the episode and the difficulty. SAVEKEYS: then
+# save and load, see test-save.
+DEMOKEYS = {6000,0x3C},{6300,0x7F}
+MENUKEYS = $(DEMOKEYS),{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F}
+SAVEKEYS = $(MENUKEYS),{44000,0x47},{44300,0x7F},{47000,0x07},{47300,0x7F},{48000,0x07},{48300,0x7F},{49000,0x07},{49300,0x7F},{50000,0x07},{50300,0x7F},{52000,0x01},{52300,0x7F},{55000,0x01},{55300,0x7F},{57000,0x0A},{57300,0x7F},{58000,0x01},{58300,0x7F},{62000,0x47},{62300,0x7F},{66000,0x47},{66300,0x7F},{69000,0x07},{69300,0x7F},{70000,0x07},{70300,0x7F},{71000,0x07},{71300,0x7F},{72000,0x07},{72300,0x7F},{73000,0x07},{73300,0x7F},{74000,0x07},{74300,0x7F},{75000,0x07},{75300,0x7F},{76000,0x07},{76300,0x7F},{77000,0x07},{77300,0x7F},{80000,0x01},{80300,0x7F},{83000,0x01},{83300,0x7F},{92000,0x7F}
 
 # Run the whole game headless for RUNSECS seconds; keeps the debug serial
 # output (wolf.ser), a memory dump and a screenshot of where it got to.
 RUNSECS ?= 60
 run-wolf: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+	$(SDCOPY) $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	-python3 tools/xrun.py $(RUNSECS) wolf.ser WOLF-NEVER -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem wolf.mem -screenshot wolf.png
 	@tr -d '\r' < wolf.ser | tail -20
@@ -411,47 +413,31 @@ dist: sdcard
 # Speed: run the first demo for RUNSECS and show the frame times it reports
 # (m65_test.c). Emulated time, so the host's speed does not matter; Xemu's
 # timing is close to, but not exactly, the real machine's.
-fps: KEYS = {6000,0x3C},{6300,0x7F}
+fps: KEYS = $(DEMOKEYS)
 fps: RUNSECS = 150
 fps: run-wolf
 	@tr -d '\r' < wolf.ser | grep -a '^FPS' || true
 
-# Where the time goes: sample the CPU from demo frame 1 to FRAME (default
-# 60) and list the busiest functions (m65_prof.s, tools/profile.py).
-profile: KEYS = {6000,0x3C},{6300,0x7F}
+# Where the time goes (m65_prof.s, tools/profile.py): the busiest functions.
+# profile: sampled from demo frame 1 to FRAME (default 60). profile-load:
+# from start-up to the first demo frame (the sign-on, title, fades and the
+# demo's level loading). profile-menu: through the menus (MENUKEYS) to the
+# first frame of a new game.
+profile: KEYS = $(DEMOKEYS)
 profile: PROFILE = 1
 profile: FRAME ?= 60
-profile: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
-	python3 tools/xrun.py 300 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem profile.mem
-	python3 tools/profile.py $(PRG).elf profile.mem
-
-# Where the time goes from start-up to the first demo frame: the sign-on,
-# title, fades and the demo's level loading (m65_test.c).
-profile-load: KEYS = {6000,0x3C},{6300,0x7F}
-profile-load: PROFILE = all
-profile-load: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+profile-load: KEYS = $(DEMOKEYS)
+profile-menu: KEYS = $(MENUKEYS)
+profile-load profile-menu: PROFILE = all
+profile-load profile-menu: PROFTOP = 60
+profile profile-load profile-menu: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
+	$(SDCOPY) $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem profile.mem -screenshot profile.png
-	python3 tools/profile.py $(PRG).elf profile.mem 60
-
-# The same through the menus to a new game: SPACE for the sign-on's "Press a
-# key", ESC to skip the PG-13 screen, ESC at the title for the menu, down four
-# times from "Read This!" (wrapping) to "New Game", then RETURN for it, the
-# episode and the difficulty; up to the game's first frame. (The serial log,
-# profile.ser, shows each scripted key as K and its scancode.)
-profile-menu: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F}
-profile-menu: PROFILE = all
-profile-menu: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
-	python3 tools/xrun.py 400 profile.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem profile.mem -screenshot profile.png
-	python3 tools/profile.py $(PRG).elf profile.mem 60
+	python3 tools/profile.py $(PRG).elf profile.mem $(PROFTOP)
 
 # Saving and loading (m65_posix.c), with no SAVES.DAT to start with (the game
-# makes it): a new game, ESC, down four times to
+# makes it): MENUKEYS to a new game, ESC, down four times to
 # "Save Game", RETURN, RETURN for slot 0, the name "A", RETURN; then ESC
 # twice (the main menu's "quit?", answered no), down nine times (wrapping)
 # to "Load Game", RETURN, RETURN for slot 0. The serial log shows each file
@@ -459,13 +445,13 @@ profile-menu: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
 # SAVES.DAT on the SD image. (The run ends when the script has run out, at
 # 92s of the machine's time: KEYS-DONE, m65_kbd.c; not on a timer of the
 # host's, which made the test depend on how busy the host was.)
-test-save: KEYS = {6000,0x3C},{6300,0x7F},{14000,0x47},{14300,0x7F},{20000,0x47},{20300,0x7F},{24000,0x07},{24300,0x7F},{25000,0x07},{25300,0x7F},{26000,0x07},{26300,0x7F},{27000,0x07},{27300,0x7F},{30000,0x01},{30300,0x7F},{34000,0x01},{34300,0x7F},{38000,0x01},{38300,0x7F},{44000,0x47},{44300,0x7F},{47000,0x07},{47300,0x7F},{48000,0x07},{48300,0x7F},{49000,0x07},{49300,0x7F},{50000,0x07},{50300,0x7F},{52000,0x01},{52300,0x7F},{55000,0x01},{55300,0x7F},{57000,0x0A},{57300,0x7F},{58000,0x01},{58300,0x7F},{62000,0x47},{62300,0x7F},{66000,0x47},{66300,0x7F},{69000,0x07},{69300,0x7F},{70000,0x07},{70300,0x7F},{71000,0x07},{71300,0x7F},{72000,0x07},{72300,0x7F},{73000,0x07},{73300,0x7F},{74000,0x07},{74300,0x7F},{75000,0x07},{75300,0x7F},{76000,0x07},{76300,0x7F},{77000,0x07},{77300,0x7F},{80000,0x01},{80300,0x7F},{83000,0x01},{83300,0x7F},{92000,0x7F}
+test-save: KEYS = $(SAVEKEYS)
 test-save: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SDDIR)
-	-MTOOLSRC=$(abspath build/mtoolsrc) mdel $(SDDIR)SAVES$(V).DAT
+	$(SDCOPY) $(GAMEFILES) $(SDDIR)
+	-$(MTOOLS) mdel $(SDDIR)SAVES$(V).DAT
 	python3 tools/xrun.py 90 wolf.ser KEYS-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem wolf.mem -screenshot wolf.png
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(SDDIR)SAVES$(V).DAT build/SAVES$(V).GOT
+	$(SDCOPY) $(SDDIR)SAVES$(V).DAT build/SAVES$(V).GOT
 	python3 tools/check_savetest.py wolf.ser build/SAVES$(V).GOT
 
 # calls.txt: the calls between the game's functions in demo frames 101-200,
@@ -475,9 +461,9 @@ test-save: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
 calltrace: THUNKALL = 1
 calltrace: OVLTRACE = 1
 calltrace: FRAME = 201
-calltrace: KEYS = {6000,0x3C},{6300,0x7F}
+calltrace: KEYS = $(DEMOKEYS)
 calltrace: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+	$(SDCOPY) $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 3000 build/calltrace.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG)
 	python3 tools/ovlcalls.py build/calltrace.ser $(PRG).elf 101 200 calls.txt
@@ -490,7 +476,7 @@ hotlist: profile
 # Play it in Xemu (a window), on the SD image that has the game's files:
 # build/sd.img (a copy of your Xemu image; yours is left alone).
 run-xemu: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SDDIR)
+	$(SDCOPY) $(GAMEFILES) $(SDDIR)
 	$(XEMU) -sdimg $(SDIMG) -prg $(PRG)
 
 # --- Music preview -------------------------------------------------------------
@@ -534,10 +520,10 @@ host-frames: $(HB)/wolf-host
 
 # The MEGA65's demo frame FRAME (it stops there), compared with the host's.
 # (SPACE at 6s answers the sign-on screen's "Press a key", as on the host.)
-check-frame: KEYS = {6000,0x3C},{6300,0x7F}
+check-frame: KEYS = $(DEMOKEYS)
 check-frame: $(PRG) $(SDIMG) $(MUSICDATA) $(SFXDATA) $(HB)/wolf-host
 	$(MAKE) host-frames FRAMES=$(FRAME)
-	MTOOLSRC=$(abspath build/mtoolsrc) mcopy -o $(GAMEFILES) $(SAVEFILES) $(SDDIR)
+	$(SDCOPY) $(GAMEFILES) $(SAVEFILES) $(SDDIR)
 	python3 tools/xrun.py 300 frame.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg $(PRG) -dumpmem frame.mem
 	python3 tools/check_frame.py frame.mem $(HB)/run/frame_$$(printf %04d $(FRAME)).raw \
