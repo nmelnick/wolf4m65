@@ -1084,6 +1084,11 @@ extern  boolean     demorecord,demoplayback;
 extern  int8_t      *demoptr, *lastdemoptr;
 #ifdef MEGA65
 extern  farptr      demofar, lastdemofar;
+
+// far_alloc and far_alloc_chip (m65_far.h) that Quit when memory runs out
+// (id_ca.cpp).
+farptr  FarAllocOrQuit (uint32_t size);
+farptr  ChipAllocOrQuit (uint16_t size);
 #endif
 extern  memptr      demobuffer;
 

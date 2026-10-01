@@ -814,9 +814,7 @@ void BuildTables (void)
     if (FAR_ISNULL(tables) || size != finetangent.bytes() + sintable.bytes() + PROJBYTES)
         CA_CannotOpen ("tables.bin");
     size -= PROJBYTES;
-    chip = far_alloc_chip (size);
-    if (FAR_ISNULL(chip))
-        Quit ("Out of chip far memory");
+    chip = ChipAllocOrQuit (size);
     far_copy (chip, tables, size);
     projtables = FAR_ADD(tables, size);
 

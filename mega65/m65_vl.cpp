@@ -88,11 +88,8 @@ void VL_SetVGAPlaneMode (void)
     scaleFactor = 1;
 
     // (in chip RAM: see wl_def.h)
-    farptr pa = far_alloc_chip(pixelangle.bytes()), wh = far_alloc_chip(wallheight.bytes());
-    if (FAR_ISNULL(pa) || FAR_ISNULL(wh))
-        Quit("Out of chip far memory");
-    pixelangle.init(pa);
-    wallheight.init(wh);
+    pixelangle.init(ChipAllocOrQuit(pixelangle.bytes()));
+    wallheight.init(ChipAllocOrQuit(wallheight.bytes()));
 }
 
 /*
@@ -168,11 +165,7 @@ static inline uint8_t FadeMix (int from, int to, int32_t frac)
 static void FadeStart (void)
 {
     if (FAR_ISNULL(fadefrom))
-    {
-        fadefrom = far_alloc_chip(sizeof curpal);
-        if (FAR_ISNULL(fadefrom))
-            Quit ("Out of chip far memory");
-    }
+        fadefrom = ChipAllocOrQuit(sizeof curpal);
     far_write(fadefrom, curpal, sizeof curpal);
 }
 

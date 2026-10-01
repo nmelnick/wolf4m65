@@ -134,6 +134,22 @@ SDMode oldsoundmode;
 
 
 #ifdef MEGA65
+farptr FarAllocOrQuit (uint32_t size)
+{
+    farptr p = far_alloc(size);
+    if (FAR_ISNULL(p))
+        Quit("Out of far memory");
+    return p;
+}
+
+farptr ChipAllocOrQuit (uint16_t size)
+{
+    farptr p = far_alloc_chip(size);
+    if (FAR_ISNULL(p))
+        Quit("Out of chip far memory");
+    return p;
+}
+
 static int32_t GRFILEPOS(const size_t idx)
 {
 	assert(idx < NUMCHUNKS + 1);
@@ -541,7 +557,7 @@ void CAL_SetupGrFile (void)
     close(handle);
     grheadfar = m65_file_far(fname, NULL);
 
-    grsegs.init(far_alloc_chip(grsegs.bytes()));
+    grsegs.init(ChipAllocOrQuit(grsegs.bytes()));
 #else
     byte data[lengthof(grstarts) * 3];
     read(handle, data, sizeof(data));
@@ -578,9 +594,7 @@ void CAL_SetupGrFile (void)
     // The whole file is in attic RAM: expand straight from it.
     grfar = m65_file_far(fname, NULL);
     {
-        farptr tmp = far_alloc(NUMPICS * sizeof(pictabletype));
-        if (FAR_ISNULL(tmp))
-            Quit("Out of far memory");
+        farptr tmp = FarAllocOrQuit(NUMPICS * sizeof(pictabletype));
         far_huff_expand(FAR_ADD(grfar, GRFILEPOS(STRUCTPIC) + 4), tmp,
                         NUMPICS * sizeof(pictabletype), (const m65_huffnode *)grhuffman);
         far_read(pictable, tmp, NUMPICS * sizeof(pictabletype));
@@ -681,10 +695,7 @@ void CAL_SetupMapFile (void)
     {
 #ifdef MEGA65
         // Chip RAM: the planes are read often during play.
-        farptr plane = far_alloc_chip(maparea*2);
-        if (FAR_ISNULL(plane))
-            Quit("Out of chip far memory");
-        mapsegs[i] = plane;
+        mapsegs[i] = ChipAllocOrQuit(maparea*2);
 #else
         mapsegs[i]=(word *) malloc(maparea*2);
         CHECKMALLOCRESULT(mapsegs[i]);
@@ -695,19 +706,10 @@ void CAL_SetupMapFile (void)
     // actorat, tilemap and spotvis live next to the planes, in chip RAM
     // (see wl_def.h).
     {
-        farptr grid = far_alloc_chip(actorat.bytes());
-        farptr tiles = far_alloc_chip(tilemap.bytes());
-        farptr vis = far_alloc_chip(spotvis.bytes());
-        if (FAR_ISNULL(grid) || FAR_ISNULL(tiles) || FAR_ISNULL(vis))
-            Quit("Out of chip far memory");
-        actorat.init(grid);
-        tilemap.init(tiles);
-        spotvis.init(vis);
-
-        farptr stats = far_alloc_chip(statobjlist.bytes());
-        if (FAR_ISNULL(stats))
-            Quit("Out of chip far memory");
-        statobjlist.init(stats);
+        actorat.init(ChipAllocOrQuit(actorat.bytes()));
+        tilemap.init(ChipAllocOrQuit(tilemap.bytes()));
+        spotvis.init(ChipAllocOrQuit(spotvis.bytes()));
+        statobjlist.init(ChipAllocOrQuit(statobjlist.bytes()));
     }
 #endif
 }
@@ -1039,9 +1041,7 @@ void CA_CacheGrChunk (int chunk)
     source = FAR_ADD(grfar, pos);
     expanded = CAL_GrChunkExpandedSize(chunk, &source);
 
-    grsegs[chunk] = far_alloc(expanded);
-    if (FAR_ISNULL(grsegs[chunk]))
-        Quit("Out of far memory");
+    grsegs[chunk] = FarAllocOrQuit(expanded);
     far_huff_expand(source, grsegs[chunk], expanded, (const m65_huffnode *)grhuffman);
 }
 
@@ -1074,11 +1074,7 @@ void CA_CacheScreen (int chunk)
     }
 
     if (FAR_ISNULL(scratch))
-    {
-        scratch = far_alloc(64000);
-        if (FAR_ISNULL(scratch))
-            Quit("Out of far memory");
-    }
+        scratch = FarAllocOrQuit(64000);
 
     source = FAR_ADD(grfar, GRFILEPOS(chunk));
     expanded = CAL_GrChunkExpandedSize(chunk, &source);
@@ -1300,11 +1296,7 @@ void CA_CacheMap (int mapnum)
     mapon = mapnum;
 
     if (FAR_ISNULL(scratch))
-    {
-        scratch = far_alloc(scratchsize);
-        if (FAR_ISNULL(scratch))
-            Quit("Out of far memory");
-    }
+        scratch = FarAllocOrQuit(scratchsize);
 
     for (plane = 0; plane<MAPPLANES; plane++)
     {
