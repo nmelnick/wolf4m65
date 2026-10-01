@@ -255,17 +255,6 @@ hwtest.prg: hwtest.c m65_video.c m65_video.h m65_math.c m65_hwdiv.c
 	$(CC) $(CFLAGS) -fno-lto -I. -Wl,--allow-multiple-definition -o $@ \
 	  hwtest.c m65_video.c m65_math.c m65_hwdiv.c   # (LTO: clang crashes on the asm; ours before libc's)
 
-dostest.prg: dostest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
-	$(CC) $(CFLAGS) -o $@ dostest.c m65_dos.c m65_video.c
-
-loadtest.prg: loadtest.c m65_dos.c m65_dos.h m65_video.c m65_video.h
-	$(CC) $(CFLAGS) -o $@ loadtest.c m65_dos.c m65_video.c
-
-test-load: loadtest.prg $(SDIMG)
-	python3 tools/xrun.py 300 loadtest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg loadtest.prg -dumpmem loadtest.mem
-	python3 tools/check_loadtest.py loadtest.mem $(WOLFDIR)/VSWAP.WL1
-
 # --- Overlay test ------------------------------------------------------------
 # ov1.c and ov2.c each become an overlay (--per-file); main.c and the runtime
 # stay resident. Checks thunks, pointers to statics, recursion, tail calls and
@@ -320,21 +309,13 @@ test-host: build/hosttest/shifttest.sim build/hosttest/libmtest.sim
 	mos-sim build/hosttest/shifttest.sim
 	mos-sim build/hosttest/libmtest.sim
 
-# --- Far memory / Huffman test ------------------------------------------------
+# --- Cache test: the real id_ca.cpp --------------------------------------------
+# (Also the far memory layer, file loading and Huffman decoding: catest checks
+# every graphics chunk, map and VSWAP page against the original code's.)
 
 build/huffref.h: tools/gen_huffref.py $(GAMEDATA)
 	@mkdir -p build
 	python3 tools/gen_huffref.py $@
-
-hufftest.prg: hufftest.c build/huffref.h m65_huff.c m65_huff.h m65_far.c m65_far_alloc.c m65_far.h m65_dos.c m65_video.c
-	$(CC) $(CFLAGS) -fno-lto -o $@ hufftest.c m65_huff.c m65_far.c m65_far_alloc.c m65_dos.c m65_video.c
-
-test-huff: hufftest.prg $(SDIMG)
-	python3 tools/xrun.py 600 hufftest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg hufftest.prg -dumpmem hufftest.mem
-	python3 tools/check_hufftest.py hufftest.mem build/huffref.h
-
-# --- Cache test: the real id_ca.cpp --------------------------------------------
 
 build/mapref.h: tools/gen_mapref.py $(GAMEDATA)
 	@mkdir -p build
@@ -391,11 +372,6 @@ test-write: writetest.prg $(SDIMG)
 	python3 tools/xrun.py 90 writetest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
 	  -sdimg $(SDIMG) -prg writetest.prg -dumpmem writetest.mem
 	python3 tools/check_writetest.py writetest.mem
-
-test-dos: dostest.prg $(SDIMG)
-	python3 tools/xrun.py 90 dostest.ser TEST-DONE -- $(XEMU) $(XEMUFLAGS) \
-	  -sdimg $(SDIMG) -prg dostest.prg -dumpmem dostest.mem
-	python3 tools/check_dostest.py dostest.mem
 
 # Run the whole game headless for RUNSECS seconds; keeps the debug serial
 # output (wolf.ser), a memory dump and a screenshot of where it got to.
@@ -574,4 +550,4 @@ shot: $(PRG)
 clean:
 	rm -f *.prg *.elf *.o *.png *.mem *.log *.ser; rm -rf build
 
-.PHONY: clean shot sid sid-midi fps profile profile-load profile-menu calltrace hotlist sdcard dist run-wolf run-xemu host-frames check-frame test-dos test-write test-save test-load test-ovl test-host test-huff test-ca test-title test-proxy
+.PHONY: clean shot sid sid-midi fps profile profile-load profile-menu calltrace hotlist sdcard dist run-wolf run-xemu host-frames check-frame test-write test-save test-ovl test-host test-ca test-title test-proxy

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reference data for the MEGA65 Huffman test (see hufftest.c).
+"""Reference data for the MEGA65 cache and title tests (catest.cpp, titletest.cpp).
 
 Builds and runs a host program that expands every graphics chunk with the
 *original* CAL_HuffExpand (taken from git revision BASE of id_ca.cpp), and

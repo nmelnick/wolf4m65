@@ -101,7 +101,7 @@ Run them in `mega65/`.
 | `make calltrace` | count the calls between the game's functions in the demo (`calls.txt`), for packing the code overlays (slow: every call is logged) |
 | `make FRAME=N check-frame` | compare demo frame N with the original code's, pixel for pixel (writes `frame_N.png`) |
 | `make test-save` | save a game and load it back, in Xemu |
-| `make test-host test-proxy test-ovl test-dos test-write test-load test-huff test-ca test-title` | the other tests |
+| `make test-host test-proxy test-ovl test-write test-ca test-title` | the other tests |
 | `make sid` | the game's AdLib music as 3-SID files (`build/sid/`) |
 | `make build/SFX.DAT` | the AdLib sound effects for the fourth SID; also `build/sid/SFX_PREVIEW.sid`, every effect in turn (`vsid` it) |
 | `make sid-midi` | the MIDI originals (put the `.mid` files in `mega65/`) as 3-SID files (`build/sid-midi/`) |
