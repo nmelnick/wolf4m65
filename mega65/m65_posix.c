@@ -216,14 +216,11 @@ static int save_close(void)
 }
 
 // Index of the file in loaded[], loading it if needed; -1 if it can't be.
-static int find_or_load(const char *name)
+// `up`: the name, upper case (upcase).
+static int find_or_load_up(const char *up)
 {
-    char up[13];
     uint8_t i;
 
-    if (strlen(name) > 12)
-        return -1;
-    upcase(up, name);
     for (i = 0; i < nloaded; i++)
         if (!strcmp(loaded[i].name, up))
             return i;
@@ -234,6 +231,17 @@ static int find_or_load(const char *name)
         return -1;
     strcpy(loaded[nloaded].name, up);
     return nloaded++;
+}
+
+// The same for any name (8.3, any case).
+static int find_or_load(const char *name)
+{
+    char up[13];
+
+    if (strlen(name) > 12)
+        return -1;
+    upcase(up, name);
+    return find_or_load_up(up);
 }
 
 farptr m65_file_far(const char *name, uint32_t *size)
@@ -260,7 +268,7 @@ int open(const char *name, int flags, ...)
         return save_open(up, (flags & (O_WRONLY | O_CREAT | O_TRUNC | O_APPEND)) != 0);
     if (flags & (O_WRONLY | O_CREAT | O_TRUNC | O_APPEND))
         return -1;
-    f = find_or_load(name);
+    f = find_or_load_up(up);
     if (f < 0)
         return -1;
     for (fd = 0; fd < MAXOPEN; fd++) {
