@@ -1607,18 +1607,15 @@ extern "C" {
     extern uint8_t m65_trp[4] RAYVAR, m65_tmhi RAYVAR, m65_svd RAYVAR;
     extern uint32_t m65_pa_base, m65_ft_base;
 }
-#endif
 
-void AsmRefresh()
+//
+// What m65_raysetup and m65_trace work from (m65_trace.s): the far addresses
+// of tilemap, spotvis, pixelangle and finetangent. They are set once, at
+// start-up (InitGame, after BuildTables): set here once too. tilemap and
+// spotvis must be 256-byte aligned, each within one bank, the same.
+//
+void TraceSetup (void)
 {
-    int32_t xstep,ystep;
-#ifndef MEGA65
-    longword xpartial,ypartial;
-#endif
-    boolean playerInPushwallBackTile = tilemap[focaltx][focalty] == 64;
-#ifdef MEGA65
-    // What m65_raysetup and m65_trace work from (m65_trace.s): tilemap and
-    // spotvis must be 256-byte aligned, each within one bank, the same.
     uint32_t tm = decltype(tilemap)::base, sv = decltype(spotvis)::base;
     if(((tm | sv) & 0xFF) || (tm ^ (tm + 0xFFF)) >> 16 || (sv ^ (sv + 0xFFF)) >> 16 || (tm ^ sv) >> 16)
         Quit("m65_trace: tilemap/spotvis must be 256-byte aligned, in one bank");
@@ -1628,8 +1625,16 @@ void AsmRefresh()
     m65_svd = (uint8_t) ((sv - tm) >> 8);
     m65_pa_base = pixelangle.addr();
     m65_ft_base = finetangent.addr();
+}
 #endif
 
+void AsmRefresh()
+{
+    int32_t xstep,ystep;
+#ifndef MEGA65
+    longword xpartial,ypartial;
+#endif
+    boolean playerInPushwallBackTile = tilemap[focaltx][focalty] == 64;
 #ifdef MEGA65
     // Low detail: only the even columns are traced; each odd one gets its
     // left neighbour's height (for the sprites' clipping, and the

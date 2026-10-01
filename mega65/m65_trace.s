@@ -21,8 +21,8 @@
 ; ray passes (the original's passvert), 2 the same for passhoriz.
 ;
 ; The ray's variables are in the zero page (wl_draw.cpp defines the game's;
-; xspot and yspot are not kept, nothing else uses them). AsmRefresh sets,
-; once a frame: m65_pa_base and m65_ft_base (pixelangle's and finetangent's
+; xspot and yspot are not kept, nothing else uses them). TraceSetup sets,
+; once at start-up: m65_pa_base and m65_ft_base (pixelangle's and finetangent's
 ; far addresses), m65_trp+2/+3 (the bank of tilemap and spotvis: chip RAM,
 ; both 256-byte aligned and in the same bank), m65_tmhi (tilemap's address,
 ; bits 8-15) and m65_svd (spotvis's minus tilemap's, in pages). The map is

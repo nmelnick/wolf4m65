@@ -1196,6 +1196,9 @@ extern  fixed   viewx,viewy;                    // the focal point
 extern  fixed   viewsin,viewcos;
 
 void    ThreeDRefresh (void);
+#ifdef MEGA65
+void    TraceSetup (void);          // (once, at start-up: the ray caster's addresses)
+#endif
 void    CalcTics (void);
 
 typedef struct

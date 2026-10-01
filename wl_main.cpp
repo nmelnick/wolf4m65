@@ -1475,6 +1475,9 @@ static void InitGame()
 
     LoadLatchMem ();
     BuildTables ();          // trig tables
+#ifdef MEGA65
+    TraceSetup ();           // (the ray caster's addresses: wl_draw.cpp)
+#endif
     SetupWalls ();
 
     NewViewSize (viewsize);
