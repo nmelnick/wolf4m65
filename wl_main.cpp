@@ -363,44 +363,34 @@ int32_t DoChecksum(byte *source,unsigned size,int32_t checksum)
 
 #ifdef MEGA65
 //
-// fwrite/fread of a far block, with the same checksum as DoChecksum over the
-// whole block (pairs of adjacent bytes, including across the chunks).
+// fwrite (writing) or fread of a far block, with the same checksum as
+// DoChecksum over the whole block (pairs of adjacent bytes, including across
+// the chunks).
 //
-static int32_t FarFwrite(farptr src, unsigned size, FILE *file, int32_t checksum)
+static int32_t FarFileBlock(farptr block, unsigned size, FILE *file, int32_t checksum,
+                            bool writing)
 {
     byte buf[64];
     int prev = -1;
     while (size)
     {
         unsigned n = size < sizeof buf ? size : sizeof buf;
-        far_read(buf, src, n);
-        fwrite(buf, n, 1, file);
+        if (writing)
+        {
+            far_read(buf, block, n);
+            fwrite(buf, n, 1, file);
+        }
+        else
+        {
+            fread(buf, n, 1, file);
+            far_write(block, buf, n);
+        }
         for (unsigned i = 0; i < n; i++)
         {
             if (prev >= 0) checksum += prev ^ buf[i];
             prev = buf[i];
         }
-        src = FAR_ADD(src, n);
-        size -= n;
-    }
-    return checksum;
-}
-
-static int32_t FarFread(farptr dst, unsigned size, FILE *file, int32_t checksum)
-{
-    byte buf[64];
-    int prev = -1;
-    while (size)
-    {
-        unsigned n = size < sizeof buf ? size : sizeof buf;
-        fread(buf, n, 1, file);
-        far_write(dst, buf, n);
-        for (unsigned i = 0; i < n; i++)
-        {
-            if (prev >= 0) checksum += prev ^ buf[i];
-            prev = buf[i];
-        }
-        dst = FAR_ADD(dst, n);
+        block = FAR_ADD(block, n);
         size -= n;
     }
     return checksum;
@@ -484,7 +474,7 @@ boolean SaveTheGame(FILE *file,int x,int y)
 
     DiskFlopAnim(x,y);
 #ifdef MEGA65
-    checksum = FarFwrite(tilemap.far(),tilemap.bytes(),file,checksum);
+    checksum = FarFileBlock(tilemap.far(),tilemap.bytes(),file,checksum,true);
 #else
     fwrite(tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
@@ -613,7 +603,7 @@ boolean LoadTheGame(FILE *file,int x,int y)
 
     DiskFlopAnim(x,y);
 #ifdef MEGA65
-    checksum = FarFread(tilemap.far(),tilemap.bytes(),file,checksum);
+    checksum = FarFileBlock(tilemap.far(),tilemap.bytes(),file,checksum,false);
 #else
     fread (tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
