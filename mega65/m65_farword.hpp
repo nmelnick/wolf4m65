@@ -5,7 +5,7 @@
 // A pointer to 16-bit words in far memory that behaves like `word *`, so code
 // walking the map planes (mapsegs, MAPSPOT) runs unchanged with the planes in
 // far memory. Dereferencing yields a FarWord: reading it converts to a word
-// (far_peekw), assigning to it writes (far memory, two far_pokes).
+// (far_peekw), assigning to it writes (far_pokew).
 
 #ifndef M65_FARWORD_HPP
 #define M65_FARWORD_HPP

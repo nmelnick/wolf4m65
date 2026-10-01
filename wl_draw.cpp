@@ -57,14 +57,11 @@ int min_wallheight;
 //
 #ifdef MEGA65
 FarArray<short, M65_SCREEN_W> pixelangle;
-#else
-short *pixelangle;
-#endif
-#ifdef MEGA65
 FarArray<int32_t, FINEANGLES/4> finetangent;       // set up by BuildTables
 FarArray<fixed, ANGLES+ANGLES/4> sintable;
 FarArray<fixed, ANGLES> costable;
 #else
+short *pixelangle;
 int32_t finetangent[FINEANGLES/4];
 fixed sintable[ANGLES+ANGLES/4];
 fixed *costable = sintable+(ANGLES/4);
@@ -285,20 +282,6 @@ boolean TransformTile (int tx, int ty, short *dispx, short *dispheight)
 =
 ====================
 */
-
-#ifdef MEGA65
-// n / d straight from the math unit's divider, for drawing: its integer part
-// can be one off (m65_hwdiv.c puts that right for the C operators; a texture
-// step or texel does not need it), and it takes a few cycles.
-static inline uint16_t DivApprox (uint32_t n, uint16_t d)
-{
-    *(volatile uint32_t *) 0xD770 = n;
-    *(volatile uint32_t *) 0xD774 = d;
-    while(*(volatile uint8_t *) 0xD70F & 0x80)
-        ;
-    return *(volatile uint16_t *) 0xD76C;
-}
-#endif
 
 int CalcHeight()
 {
@@ -893,15 +876,6 @@ int CalcRotate (objtype *ob)
 // column's copies issued by m65_dma_segs (mega65/m65_video.c).
 //
 
-// a * b on the math unit (16 x 16 -> 32 bits; __mulsi3 is 32 x 32, and a call).
-static inline uint32_t HwMul16 (uint16_t a, uint16_t b)
-{
-    volatile uint8_t *m = (volatile uint8_t *) 0xD770;
-    m[0] = (uint8_t) a; m[1] = (uint8_t) (a >> 8); m[2] = 0; m[3] = 0;
-    m[4] = (uint8_t) b; m[5] = (uint8_t) (b >> 8); m[6] = 0; m[7] = 0;
-    return *(volatile uint32_t *) 0xD778;
-}
-
 static void ScaleShapeFar (int xcenter, int shapenum, unsigned scale,
                            unsigned height, bool clipwalls)
 {
@@ -1198,11 +1172,7 @@ void DrawScaleds (void)
 {
     int      i,least,numvisable,height;
     spotvisptr visspot;
-#ifdef MEGA65
-    FarByteGrid<0, MAPSIZE>::Ptr tilespot;
-#else
-    byte     *tilespot;
-#endif
+    tilemapptr tilespot;
     unsigned spotloc;
 
     statobjptr statptr;

@@ -95,6 +95,22 @@ void m65_dma_fill_skip(uint32_t dst, uint8_t value, uint16_t count, uint8_t dsts
 // __rc8/9; srcstep in __rc10/11; dstskip in __rc12. A count of 0 does
 // nothing, as for dma_run.)
 __asm__(
+    // m65_bankmb b2, b3, bank, mb: from a 28-bit address's bytes 2 and 3,
+    // the DMA list's bank (bits 16-19) to `bank` and the option's megabyte
+    // (bits 20-27) to `mb`. (Uses __rc13.)
+    "  .macro m65_bankmb b2, b3, bank, mb\n"
+    "  lda \\b2\n and #$0f\n sta \\bank\n"
+    "  lda \\b3\n asl\n asl\n asl\n asl\n sta __rc13\n"
+    "  lda \\b2\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta \\mb\n"
+    "  .endm\n"
+    // m65_dmago: start the job list m65_sjob (enhanced, F018B, in bank 0).
+    "  .macro m65_dmago\n"
+    "  lda #1\n sta $d703\n"                        // (F018B)
+    "  lda #0\n sta $d702\n sta $d704\n"          // the list: bank 0,
+    "  lda #>m65_sjob\n sta $d701\n"
+    "  lda #<m65_sjob\n sta $d705\n"               // and go
+    "  .endm\n"
+
     "  .section .data.m65_sjob,\"aw\",@progbits\n"
     "m65_sjob:\n"
     "  .byte $0b\n"                    // 0: F018B lists
@@ -118,21 +134,14 @@ __asm__(
     "  .type m65_dma_scale,@function\n"
     "m65_dma_scale:\n"
     "  sta m65_sjob+18\n stx m65_sjob+19\n"        // destination
-    "  lda __rc2\n and #$0f\n sta m65_sjob+20\n"
-    "  lda __rc3\n asl\n asl\n asl\n asl\n sta __rc13\n"
-    "  lda __rc2\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_sjob+4\n"
+    "  m65_bankmb __rc2, __rc3, m65_sjob+20, m65_sjob+4\n"
     "  lda __rc4\n sta m65_sjob+15\n lda __rc5\n sta m65_sjob+16\n"   // source
-    "  lda __rc6\n and #$0f\n sta m65_sjob+17\n"
-    "  lda __rc7\n asl\n asl\n asl\n asl\n sta __rc13\n"
-    "  lda __rc6\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_sjob+2\n"
+    "  m65_bankmb __rc6, __rc7, m65_sjob+17, m65_sjob+2\n"
     "  lda __rc10\n sta m65_sjob+8\n lda __rc11\n sta m65_sjob+10\n"  // steps
     "  lda __rc12\n sta m65_sjob+6\n"
     "  lda __rc8\n sta m65_sjob+13\n ora __rc9\n beq 1f\n"            // count
     "  lda __rc9\n sta m65_sjob+14\n"
-    "  lda #1\n sta $d703\n"                        // (F018B)
-    "  lda #0\n sta $d702\n sta $d704\n"          // the list: bank 0,
-    "  lda #>m65_sjob\n sta $d701\n"
-    "  lda #<m65_sjob\n sta $d705\n"               // and go
+    "  m65_dmago\n"
     "1: rts\n"
     "  .size m65_dma_scale, . - m65_dma_scale\n"
 
@@ -148,9 +157,7 @@ __asm__(
     "  .type m65_dma_col_setup,@function\n"
     "m65_dma_col_setup:\n"
     "  sta m65_colbase\n stx m65_colbase+1\n"
-    "  lda __rc2\n and #$0f\n sta m65_colbank\n"
-    "  lda __rc3\n asl\n asl\n asl\n asl\n sta __rc13\n"
-    "  lda __rc2\n lsr\n lsr\n lsr\n lsr\n ora __rc13\n sta m65_colmb\n"
+    "  m65_bankmb __rc2, __rc3, m65_colbank, m65_colmb\n"
     "  lda __rc4\n sta m65_colstep\n lda __rc5\n sta m65_colstep+1\n"
     "  rts\n"
     "  .size m65_dma_col_setup, . - m65_dma_col_setup\n"
@@ -183,10 +190,7 @@ __asm__(
     "  lda m65_segsrc+2,x\n and #$0f\n sta m65_sjob+17\n"
     "  lda m65_segsrc+3,x\n asl\n asl\n asl\n asl\n sta __rc10\n"
     "  lda m65_segsrc+2,x\n lsr\n lsr\n lsr\n lsr\n ora __rc10\n sta m65_sjob+2\n"
-    "  lda #1\n sta $d703\n"
-    "  lda #0\n sta $d702\n sta $d704\n"
-    "  lda #>m65_sjob\n sta $d701\n"
-    "  lda #<m65_sjob\n sta $d705\n"
+    "  m65_dmago\n"
     "  iny\n bra 2b\n"
     "3: rts\n"
     "  .size m65_dma_segs, . - m65_dma_segs\n"

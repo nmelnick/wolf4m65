@@ -194,8 +194,10 @@ void Quit(const char *errorStr, ...);
 #ifdef MEGA65
 // Far map grids (tilemap, spotvis, actorat); see m65_fargrid.hpp.
 #include "m65_fargrid.hpp"
+typedef FarByteGrid<0, MAPSIZE>::Ptr tilemapptr;    // &tilemap[x][y]
 typedef FarByteGrid<1, MAPSIZE>::Ptr spotvisptr;    // &spotvis[x][y]
 #else
+typedef byte *tilemapptr;
 typedef byte *spotvisptr;
 #endif
 #define maparea         MAPSIZE*MAPSIZE
@@ -1040,20 +1042,15 @@ void UpdateSoundLoc(void);
 // TILEMAP_FLAT/SPOTVIS_FLAT stand for (byte *) tilemap/spotvis.
 extern  FarByteGrid<0, MAPSIZE> tilemap;        // wall values only
 extern  FarByteGrid<1, MAPSIZE> spotvis;
+extern  FarPtrGrid<objtype, MAPSIZE> actorat;
 #define TILEMAP_FLAT (tilemap.flat())
 #define SPOTVIS_FLAT (spotvis.flat())
 #else
 extern  byte            tilemap[MAPSIZE][MAPSIZE];      // wall values only
 extern  byte            spotvis[MAPSIZE][MAPSIZE];
+extern  objtype         *actorat[MAPSIZE][MAPSIZE];
 #define TILEMAP_FLAT ((byte *)tilemap)
 #define SPOTVIS_FLAT ((byte *)spotvis)
-#endif
-#ifdef MEGA65
-// In far memory (chip RAM); behaves like the array (see m65_fargrid.hpp).
-#include "m65_fargrid.hpp"
-extern  FarPtrGrid<objtype, MAPSIZE> actorat;
-#else
-extern  objtype         *actorat[MAPSIZE][MAPSIZE];
 #endif
 
 extern  objtype         *player;
@@ -1169,11 +1166,6 @@ int DebugKeys (void);
 // In chip RAM (near memory is short): a view column's angle and wall height.
 extern  FarArray<short, M65_SCREEN_W> pixelangle;
 extern  FarArray<int, M65_SCREEN_W> wallheight;
-#else
-extern  short *pixelangle;
-extern  int *wallheight;
-#endif
-#ifdef MEGA65
 // In far (chip) memory, precomputed on the host (TABLES.BIN, see
 // tools/gen_tables.py); they behave like the arrays (m65_fararray.hpp).
 // costable overlays sintable with a quarter phase shift, as below.
@@ -1181,6 +1173,8 @@ extern  FarArray<int32_t, FINEANGLES/4> finetangent;
 extern  FarArray<fixed, ANGLES+ANGLES/4> sintable;
 extern  FarArray<fixed, ANGLES> costable;
 #else
+extern  short *pixelangle;
+extern  int *wallheight;
 extern  int32_t finetangent[FINEANGLES/4];
 extern  fixed sintable[];
 extern  fixed *costable;

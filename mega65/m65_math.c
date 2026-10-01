@@ -6,10 +6,9 @@
 
 #include <stdint.h>
 
+#include "m65_hw.h"
 #include "m65_math.h"
 
-#define MULTINA   (*(volatile uint32_t *)0xD770)
-#define MULTINB   (*(volatile uint32_t *)0xD774)
 #define MULTOUT_L (*(volatile uint16_t *)0xD778)   // bits 0-15
 #define MULTOUT_M (*(volatile uint32_t *)0xD77A)   // bits 16-47
 
@@ -31,8 +30,8 @@ int32_t m65_fixedmul(int32_t a, int32_t b)
         ub = -ub;
         neg ^= 1;
     }
-    MULTINA = ua;
-    MULTINB = ub;
+    MATH_MULTINA = ua;
+    MATH_MULTINB = ub;
     lo = MULTOUT_L;
     hi = MULTOUT_M;
     round = neg ? 0x7FFF : 0x8000;

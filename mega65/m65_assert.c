@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "m65_debug.h"
+#include "m65_hw.h"
 
 void __assert(const char *file, const char *line, const char *function,
               const char *expr)
@@ -15,5 +16,5 @@ void __assert(const char *file, const char *line, const char *function,
     m65_debug_puts(expr);
     m65_debug_puts("TEST-DONE");        // (lets test runs stop right away)
     for (;;)
-        *(volatile unsigned char *)0xD020 = 2;
+        VIC_BORDER = 2;
 }

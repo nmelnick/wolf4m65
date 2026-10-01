@@ -8,12 +8,8 @@
 #include <stdint.h>
 
 #include "m65_dos.h"
+#include "m65_hyppo.h"
 #include "m65_video.h"      // m65_dma_copy, m65_dma_fill
-
-#define HYPPO_WRITEFILE  0x1C
-
-#define SD_SECTOR_BUFFER 0xFFD6E00UL
-#define SD_CTL_MAPSDBUF  (*(volatile uint8_t *)0xD689)   // bit 7: the SD buffer, not the FDC's
 
 int m65_dos_write512(int fd, uint32_t src, uint16_t count)
 {
@@ -43,14 +39,12 @@ int m65_dos_write512(int fd, uint32_t src, uint16_t count)
 // worth (128 clusters), all chained to the file although the directory
 // entry has `size`; the contents are whatever was on the card. Returns 0
 // on success.
-#define HYPPO_SETNAME    0x2E
-#define namebuf ((char *)0x0200)        // (as m65_dos.c: setname's buffer)
-
 int m65_dos_mkfile(const char *name, uint32_t size)
 {
-    uint8_t a = HYPPO_SETNAME, x = 0x00, y = 0x02, ok = 0, i;
+    uint8_t a = HYPPO_SETNAME, x = (uint8_t)(uintptr_t)namebuf,
+            y = (uint8_t)((uintptr_t)namebuf >> 8), ok = 0, i;
 
-    for (i = 0; name[i] && i < 63; i++)
+    for (i = 0; name[i] && i < NAMEBUF_SIZE - 1; i++)
         namebuf[i] = name[i];
     namebuf[i] = 0;
     __asm__ volatile(

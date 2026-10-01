@@ -73,11 +73,6 @@ static boolean  nextpositioned;
 #define SID_BASE   0xD400               // three SIDs, 0x20 apart
 #define SID(reg)   (*(volatile uint8_t *) (SID_BASE + (reg)))
 #define SIDMODE    (*(volatile uint8_t *) 0xD63C)  // bits 0-3: 8580 (1) or 6581 (0)
-#define CIA1_TALO  (*(volatile uint8_t *) 0xDC04)
-#define CIA1_TAHI  (*(volatile uint8_t *) 0xDC05)
-#define CIA1_ICR   (*(volatile uint8_t *) 0xDC0D)
-#define CIA1_CRA   (*(volatile uint8_t *) 0xDC0E)
-#define CIA_HZ     1000000UL            // (the CIAs' clock; see m65_sdl.c)
 
 static farptr   musicfile;              // MUSIC.DAT in attic RAM
 static uint8_t  numsongs;
@@ -212,8 +207,8 @@ void SD_Startup (void)
     __asm__ volatile ("sei");
     m65_mus_on = 0;
     *(volatile uint16_t *) 0xFFFE = (uint16_t) (uintptr_t) m65_music_irq;
-    *(volatile uint8_t *) 0xD01A = 0;   // no VIC interrupts
-    *(volatile uint8_t *) 0xD019 = 0xFF;
+    VIC_IRQMASK = 0;                    // no VIC interrupts
+    VIC_IRQ = 0xFF;
     CIA1_ICR = 0x7F;
     CIA1_TALO = (uint8_t) latch;
     CIA1_TAHI = (uint8_t) (latch >> 8);

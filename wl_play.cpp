@@ -41,13 +41,10 @@ int godmode, singlestep, extravbls = 0;
 #ifdef MEGA65
 FarByteGrid<0, MAPSIZE> tilemap;        // storage set up in CAL_SetupMapFile
 FarByteGrid<1, MAPSIZE> spotvis;
+FarPtrGrid<objtype, MAPSIZE> actorat;
 #else
 byte tilemap[MAPSIZE][MAPSIZE]; // wall values only
 byte spotvis[MAPSIZE][MAPSIZE];
-#endif
-#ifdef MEGA65
-FarPtrGrid<objtype, MAPSIZE> actorat;   // storage set up in CA_Startup
-#else
 objtype *actorat[MAPSIZE][MAPSIZE];
 #endif
 
@@ -223,7 +220,7 @@ int songs[] = {
     XFUNKIE_MUS,
     XDEATH_MUS,
     XGETYOU_MUS,                // DON'T KNOW
-    ULTIMATE_MUS,               // Trans Grï¿½sse
+    ULTIMATE_MUS,               // Trans Gr”sse
 
     DUNGEON_MUS,
     GOINGAFT_MUS,

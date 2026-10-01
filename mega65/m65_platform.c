@@ -135,7 +135,7 @@ static void screen_puts(uint32_t screen, uint16_t linestep, uint8_t row, const c
 // until the sound starts), and the screen moved to TEXT_SCREEN (the game's
 // screen RAM, M65_SCREENRAM: free until the video mode is set); cleared.
 #define TEXT_FONT   0x11000UL
-#define TEXT_SCREEN 0x12000UL
+#define TEXT_SCREEN M65_SCREENRAM
 #define VIC(r)      (*(volatile uint8_t *)(0xD000 + (r)))
 
 static uint16_t text_linestep;

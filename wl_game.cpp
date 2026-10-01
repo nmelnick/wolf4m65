@@ -678,12 +678,9 @@ void SetupGameLevel (void)
 //
 #ifdef MEGA65
     tilemap.clear ();
-#else
-    memset (tilemap,0,sizeof(tilemap));
-#endif
-#ifdef MEGA65
     actorat.clear ();
 #else
+    memset (tilemap,0,sizeof(tilemap));
     memset (actorat,0,sizeof(actorat));
 #endif
     map = mapsegs[0];

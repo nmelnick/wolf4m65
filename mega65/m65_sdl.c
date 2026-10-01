@@ -11,6 +11,7 @@
 
 #include "SDL.h"
 #include "m65_far.h"
+#include "m65_hw.h"
 #include "m65_surf.h"
 
 // ---------------------------------------------------------------------------
@@ -125,9 +126,7 @@ int SDL_SaveBMP(SDL_Surface *s, const char *file) { (void)s; (void)file; return 
 #define CIA2_CRA   (*(volatile uint8_t *)0xDD0E)
 #define CIA2_CRB   (*(volatile uint8_t *)0xDD0F)
 
-// CIA clock cycles per millisecond. Measured against the video frame rate in
-// Xemu (titletest): the CIAs run at 1.000 MHz, not at the C64's PAL clock.
-#define CIA_PER_MS 1000
+#define CIA_PER_MS (CIA_HZ / 1000)      // CIA clock cycles per millisecond
 
 static uint16_t last_tb;
 static uint32_t ticks;
@@ -202,10 +201,6 @@ void SDL_WarpMouse(Uint16 x, Uint16 y) { (void)x; (void)y; }
 // Both ports are inputs (nothing drives the C64-style keyboard matrix
 // columns, so keys do not show up in them; the keyboard is read through
 // $D614, m65_kbd.c). A digital stick: the axes are full scale or 0.
-#define CIA1_PRA   (*(volatile uint8_t *)0xDC00)
-#define CIA1_PRB   (*(volatile uint8_t *)0xDC01)
-#define CIA1_DDRA  (*(volatile uint8_t *)0xDC02)
-#define CIA1_DDRB  (*(volatile uint8_t *)0xDC03)
 
 static uint8_t joy_bits;                // pressed: bit 0 up ... bit 4 fire
 static char joy_handle;                 // (SDL_Joystick is opaque: any address)

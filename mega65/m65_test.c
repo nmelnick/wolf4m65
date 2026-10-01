@@ -20,6 +20,7 @@
 
 #include "SDL.h"
 #include "m65_debug.h"
+#include "m65_hw.h"
 #include "m65_video.h"
 
 #ifdef M65_PROFILE
@@ -33,21 +34,21 @@ static void prof_start(void)
 {
     m65_dma_fill(PROF_BASE, 0, PROF_BYTES);
     *(volatile uint16_t *)0xFFFE = (uint16_t)(uintptr_t)m65_prof_irq;
-    *(volatile uint8_t *)0xD01A = 0;        // no VIC interrupts
-    *(volatile uint8_t *)0xD019 = 0xFF;
-    *(volatile uint8_t *)0xDC0D = 0x7F;     // CIA 1: only timer A,
-    *(volatile uint8_t *)0xDC04 = 999 & 0xFF;   // every 1000 cycles (1ms at 1MHz)
-    *(volatile uint8_t *)0xDC05 = 999 >> 8;
-    *(volatile uint8_t *)0xDC0E = 0x11;     // load, start, continuous
-    (void)*(volatile uint8_t *)0xDC0D;
-    *(volatile uint8_t *)0xDC0D = 0x81;
+    VIC_IRQMASK = 0;                        // no VIC interrupts
+    VIC_IRQ = 0xFF;
+    CIA1_ICR = 0x7F;                        // CIA 1: only timer A,
+    CIA1_TALO = (CIA_HZ / 1000 - 1) & 0xFF; // every millisecond
+    CIA1_TAHI = (CIA_HZ / 1000 - 1) >> 8;
+    CIA1_CRA = 0x11;                        // load, start, continuous
+    (void)CIA1_ICR;
+    CIA1_ICR = 0x81;
     __asm__ volatile("cli");
 }
 
 static void prof_stop(void)
 {
     __asm__ volatile("sei");
-    *(volatile uint8_t *)0xDC0D = 0x7F;
+    CIA1_ICR = 0x7F;
     m65_dma_copy(PROF_COPY, PROF_BASE, PROF_BYTES);
 }
 #endif
