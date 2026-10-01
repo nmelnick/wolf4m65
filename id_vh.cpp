@@ -26,7 +26,7 @@ static farptr FontFar (void)
 
 void VWB_DrawPropString(const char* string)
 {
-    static byte glyph[256];         // one glyph: at most 13 x 16 (font 1)
+    byte *glyph = m65_scratch;      // one glyph: at most 13 x 16 (font 1); see m65_far.h
     farptr font = FontFar();
     int height = (int16_t) far_peekw(font);
     byte ch;
@@ -37,7 +37,7 @@ void VWB_DrawPropString(const char* string)
         int location = (int16_t) far_peekw(FAR_ADD(font, 2 + 2 * ch));
         int x, i;
 
-        if (width * height > (int) sizeof(glyph))
+        if (width * height > M65_SCRATCH)
             Quit("VWB_DrawPropString: glyph too large");
         if (width * height)
             far_read(glyph, FAR_ADD(font, location), width * height);

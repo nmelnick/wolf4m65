@@ -4,6 +4,8 @@
 #include "m65_surf.h"
 #include "m65_video.h"
 
+_Static_assert(M65_SCREEN_W <= M65_SCRATCH, "m65_scratch too small");
+
 uint32_t surf_addr(const SDL_Surface *s, unsigned x, unsigned y)
 {
     if (s->tiled)                   // column-major cells: see m65_video.h
@@ -96,7 +98,7 @@ void surf_copy_rect(const SDL_Surface *src, unsigned sx, unsigned sy,
                     const SDL_Surface *dst, unsigned dx, unsigned dy,
                     unsigned w, unsigned h)
 {
-    static uint8_t row[M65_SCREEN_W];
+    uint8_t *row = m65_scratch;     // (M65_SCREEN_W bytes)
 
     // Whole screen between two surfaces of the same layout: one block.
     if (src->tiled == dst->tiled && sx == 0 && sy == 0 && dx == 0 && dy == 0 &&
@@ -112,9 +114,9 @@ void surf_copy_rect(const SDL_Surface *src, unsigned sx, unsigned sy,
         }
         return;
     }
-    while (w > sizeof row) {        // (wider than any row buffer we need)
-        surf_copy_rect(src, sx, sy, dst, dx, dy, sizeof row, h);
-        sx += sizeof row; dx += sizeof row; w -= sizeof row;
+    while (w > M65_SCREEN_W) {      // (wider than any row buffer we need)
+        surf_copy_rect(src, sx, sy, dst, dx, dy, M65_SCREEN_W, h);
+        sx += M65_SCREEN_W; dx += M65_SCREEN_W; w -= M65_SCREEN_W;
     }
     while (h--) {
         surf_read_row(src, sx, sy++, row, w);

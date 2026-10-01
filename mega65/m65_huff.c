@@ -9,12 +9,17 @@
 // it has written m65_huff_want bytes (0: 256) or 0 when it needs the next
 // BUF bytes of input (m65_huff_empty set). The tree walk, its input byte
 // and the buffer positions carry over from one call to the next.
-uint8_t m65_huff_inbuf[BUF], m65_huff_outbuf[BUF];
+// (The buffers are m65_scratch's first 512 bytes: see m65_far.h.)
+#define m65_huff_inbuf  (m65_scratch)
+#define m65_huff_outbuf (m65_scratch + BUF)
+_Static_assert(2 * BUF <= M65_SCRATCH, "m65_scratch too small");
 uint8_t m65_huff_in, m65_huff_out, m65_huff_empty, m65_huff_want;
 const m65_huffnode *m65_huff_table, *m65_huff_head;
 uint8_t m65_huff_run(void);
 
 __asm__(
+    "  .set m65_huff_inbuf, m65_scratch\n"
+    "  .set m65_huff_outbuf, m65_scratch+256\n"
     "  .zeropage m65_hfn\n"
     "  .section .zp.bss,\"aw\",@nobits\n"
     "m65_hfn: .zero 2\n"                        // the current node

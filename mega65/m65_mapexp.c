@@ -2,6 +2,9 @@
 
 #include "m65_mapexp.h"
 
+// The three buffers below are m65_scratch (see m65_far.h).
+_Static_assert(3 * 256 <= M65_SCRATCH, "m65_scratch too small");
+
 #define NEARTAG 0xa7
 #define FARTAG  0xa8
 
@@ -9,7 +12,7 @@
 
 #define INBUF 256
 
-static uint8_t inbuf[INBUF];
+#define inbuf (m65_scratch)
 static uint16_t inpos;
 static farptr inaddr;           // far address of inbuf[0]
 
@@ -40,7 +43,7 @@ static uint16_t in_word(void)
 
 #define OUTWORDS 128
 
-static uint16_t outbuf[OUTWORDS];
+#define outbuf ((uint16_t *)(m65_scratch + INBUF))
 static uint16_t outn;
 static farptr outaddr;          // far address of outbuf[0]
 
@@ -67,7 +70,7 @@ static void out_word(uint16_t w)
 // then only reads words that are already written.
 static void out_copy(farptr src, uint16_t count)
 {
-    static uint16_t tmp[OUTWORDS];
+    uint16_t *tmp = (uint16_t *)(m65_scratch + INBUF + 2 * OUTWORDS);
     uint32_t dist;
     uint16_t n;
 

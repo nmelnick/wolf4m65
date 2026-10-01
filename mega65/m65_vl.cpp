@@ -13,6 +13,8 @@
 #include "m65_surf.h"
 #include "m65_video.h"
 
+static_assert(M65_SCREEN_W <= M65_SCRATCH, "m65_scratch too small");
+
 boolean  fullscreen = true;
 boolean  usedoublebuffering = true;
 unsigned screenWidth = 320;
@@ -334,7 +336,7 @@ static void PlanarRow (farptr source, int origwidth, int origheight,
 void VL_MemToLatch (farptr source, int width, int height,
     SDL_Surface *destSurface, int x, int y)
 {
-    static byte row[M65_SCREEN_W];
+    byte *row = m65_scratch;       // (M65_SCREEN_W bytes: see m65_far.h)
     int j;
 
     assert(x >= 0 && x + width <= destSurface->w
@@ -351,7 +353,7 @@ void VL_MemToLatch (farptr source, int width, int height,
 void VL_MemToScreenScaledCoord (farptr source, int origwidth, int origheight, int srcx, int srcy,
                                 int destx, int desty, int width, int height)
 {
-    static byte row[M65_SCREEN_W];
+    byte *row = m65_scratch;       // (M65_SCREEN_W bytes: see m65_far.h)
     int j;
 
     assert(destx >= 0 && destx + width <= (int) screenWidth

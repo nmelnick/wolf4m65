@@ -4,6 +4,8 @@
 #include "m65_far.h"
 #include "m65_video.h"      // m65_dma_copy
 
+uint8_t m65_scratch[M65_SCRATCH];   // (see m65_far.h)
+
 void far_read(void *dst, farptr src, uint16_t count)
 {
     m65_dma_copy((uint32_t)(uintptr_t)dst, src.a, count);

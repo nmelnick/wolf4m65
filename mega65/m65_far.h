@@ -40,6 +40,15 @@ static inline farptr FAR_ADD(farptr p, uint32_t n) { farptr r; r.a = p.a + n; re
 #define ATTIC_HEAP       0x8600000UL
 #define ATTIC_HEAP_END   0x87F0000UL
 
+// One scratch buffer in near memory, for the routines that need one only
+// while they run and meanwhile call nothing that uses it (DMA, the far
+// primitives below): row copies (m65_surf.c, m65_vl.cpp), a glyph
+// (id_vh.cpp), Huffman and map expansion (m65_huff.c, m65_mapexp.c).
+// Interrupt code must not use it. (Near memory is short: each had its own,
+// 2.5KB in all.)
+#define M65_SCRATCH 768
+extern uint8_t m65_scratch[M65_SCRATCH];
+
 // Copy between far and near memory, or far to far (DMA).
 void far_read(void *dst, farptr src, uint16_t count);
 void far_write(farptr dst, const void *src, uint16_t count);
