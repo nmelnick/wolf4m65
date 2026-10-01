@@ -27,6 +27,7 @@ The SID register writes are then played by the player in sidpack.py at 200
 ticks per second (5ms timing).
 """
 import argparse
+import math
 import os
 import re
 import struct
@@ -110,10 +111,34 @@ def read_midi(path):
 class Patch:
     """A SID sound: waveform, pulse width (12 bits), envelope nibbles (s is the
     sustain level at full volume), and for drums a fixed pitch (Hz, or a raw
-    frequency register value for noise) and a pitch sweep: [(ticks, factor)]."""
-    def __init__(self, wave, a, d, s, r, pw=0x800, hz=None, raw=None, sweep=()):
+    frequency register value for noise) and a pitch sweep: [(ticks, factor)].
+    For the arrangements (ARRANGEMENTS), optionally:
+      chord:  the note sounds as several, these semitones from it (a voice each);
+      glide:  (semitones, ticks, shape): it starts that far off and slides to the
+              note, (1 - p ** shape) of the way still to go at p of the time;
+      vib:    (cents, Hz, delay ticks): vibrato;
+      filt:   through its SID's filter (the arrangement's cutoff);
+      attack: (waveform, ticks): that waveform first (e.g. noise, for a hit);
+      retrig: ticks: the gate again after that long (a flam)."""
+    def __init__(self, wave, a, d, s, r, pw=0x800, hz=None, raw=None, sweep=(),
+                 chord=(0,), glide=None, vib=None, filt=False, attack=None, retrig=0):
         self.wave, self.a, self.d, self.s, self.r = wave, a, d, s, r
         self.pw, self.hz, self.raw, self.sweep = pw, hz, raw, sweep
+        self.chord, self.glide, self.vib, self.filt = chord, glide, vib, filt
+        self.attack, self.retrig = attack, retrig
+
+
+class Arrangement:
+    """What a song needs beyond General MIDI: its own patches by channel (and
+    by drum note), its tuning in cents, its tempo (a factor), and the low-pass
+    filter its filt patches go through (cutoff: the 11-bit register value;
+    resonance 0-15; the same on every SID); seamless: it loops at its exact
+    length (not half a second after its last note, for the tails)."""
+    def __init__(self, patches=None, drums=None, cents=0.0, tempo=1.0, cutoff=None, res=0,
+                 seamless=False):
+        self.patches, self.drums = patches or {}, drums or {}
+        self.cents, self.tempo, self.cutoff, self.res = cents, tempo, cutoff, res
+        self.seamless = seamless
 
 
 def P(wave, a, d, s, r, pw=0x800, **kw):
@@ -242,6 +267,54 @@ def drum_patch(note):
     return P(NOI, 0, 4, 0, 4, raw=0x8000)
 
 
+# Songs that need more than General MIDI, by title (the file name without its
+# number).
+#
+# "Title": the Macintosh version's title theme. Its MIDI file names the
+# parts, but the Mac played them with custom sampled instruments, which are
+# lost; these patches come from an analysis of a recording of the Mac's
+# music, against the MIDI file (beat 0 at the recording's start):
+#   - tempo 102.9 BPM, not the file's 100; pitch 12.6 cents sharp (the Mac's
+#     22254Hz sample playback);
+#   - Melody Lo: harmonics 1-3 strong, no 5th (a pulse of 20% width), rolled
+#     off above ~3kHz; Melody Hi: no gap in its harmonics, darker (a sawtooth,
+#     filtered lower). Both swell in ~100ms and waver ~5 cents (vibrato ~4.5Hz
+#     on some notes, the slow beat of detuned layers on others);
+#   - "Minor" (one note, C4) is a sampled chord stab: Bb minor 7th, Ab3 Bb3 Db4
+#     F4 (its A flat's overtones, Eb5 and Eb6, are its strongest partials),
+#     with a noisy attack;
+#   - "Rip" (C5) is a brass rip: it starts ~6.5 semitones low, hangs there,
+#     then shoots up to C5 within ~0.2s, swelling ~7dB, and holds;
+#   - the snares are dark (little above 4kHz); "Snare Flam" hits twice, ~35ms
+#     apart; the bass is round, most of it an octave above the written note.
+# The Mac's output is dark (8-bit samples, played at 22kHz): so most voices
+# go through the low-pass (not the stab and the tam tam, whose bite and
+# shimmer it has), and the bass sounds at both octaves. Rendered (sidplayfp,
+# 8580) and analysed the same way, the result is within ~2dB of the recording
+# by octave band, section by section, and the melody's missing 5th harmonic,
+# the rip's path and the stab's chord come out as measured. (The filter
+# cutoff is for the 8580; a 6581's filter is darker and varies by chip.)
+ARRANGEMENTS = {
+    "Title": Arrangement(
+        tempo=102.88 / 100, cents=12.6, cutoff=250, res=2, seamless=True,
+        patches={
+            0: P(PUL, 5, 4, 12, 5, 0x380, filt=True, vib=(6, 4.5, 24)),        # Melody Lo
+            1: P(SAW, 5, 4, 11, 5, filt=True, vib=(6, 4.5, 24)),               # Melody Hi
+            3: P(TRI, 0, 11, 0, 11, filt=True),                                # Chime
+            5: P(PUL, 0, 7, 10, 5, 0x400, chord=(0, 12), filt=True),           # Bass (and an octave up)
+            6: P(SAW, 0, 3, 0, 3, chord=(-4, -2, 1, 5), attack=(NOI, 2)),      # Minor: Bbm7
+            7: P(SAW, 7, 6, 12, 7, glide=(-6.5, 42, 3), vib=(5, 4.5, 60), filt=True),   # Rip
+            8: P(TRI, 0, 10, 0, 10, filt=True),                                # Timpani
+        },
+        drums={
+            40: P(NOI, 0, 3, 0, 3, raw=0x1000, filt=True),                     # Snare Hi
+            38: P(NOI, 0, 4, 0, 4, raw=0x0900, filt=True),                     # Snare Lo
+            39: P(NOI, 0, 3, 0, 3, raw=0x0C00, retrig=7, filt=True),           # Snare Flam
+            47: P(NOI, 3, 11, 0, 11, raw=0x0700),                              # Tam Tam
+        }),
+}
+
+
 def freq_reg(hz):
     return max(sid_freq(hz), 1)
 
@@ -255,6 +328,8 @@ def note_hz(note, bend=0.0):
 class Voice:
     def __init__(self, k):
         self.base = (k // 3) * 0x20 + (k % 3) * 7
+        self.sid, self.bit = k // 3, 1 << (k % 3)
+        self.offset = 0                 # (chord: semitones from the note)
         self.note = None                # (channel, note) while playing
         self.start = -1                 # tick of the current/last note-on
         self.released = -1              # tick of the last note-off
@@ -264,9 +339,14 @@ class Voice:
         self.level = 1.0
 
 
-def convert(events, end, resumable=False, sidvolume=0x0F):
+def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
     """resumable: every note writes all of its voice's setup, so that playing
-    can start at any record (for the game, which resumes songs)."""
+    can start at any record (for the game, which resumes songs).
+    arr: the song's Arrangement, if it has one."""
+    arr = arr or Arrangement()
+    tune = 2 ** (arr.cents / 1200)
+    routing = [0, 0, 0]                 # the voices each SID's filter takes
+    stolen = 0
     out = []                            # (tick, order, register, value)
     voices = [Voice(k) for k in range(9)]
     program = [0] * 16
@@ -280,6 +360,17 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
     def w(t, order, v, reg, val, force=False):
         out.append((t, order, v.base + reg, val & 0xFF, force and resumable))
 
+    def wf(t, v, hz):
+        f = freq_reg(hz)
+        w(t, 1, v, 0, f)
+        w(t, 1, v, 1, f >> 8)
+
+    def route(t, v, on):
+        r = routing[v.sid] | v.bit if on else routing[v.sid] & ~v.bit
+        if r != routing[v.sid] or resumable:
+            routing[v.sid] = r
+            out.append((t, 1, v.sid * 0x20 + 0x17, arr.res << 4 | r, resumable))
+
     def level(ch, vel):
         return ((vel / 127) * volume[ch] / 127 * expression[ch] / 127) ** 0.5
 
@@ -288,12 +379,19 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
 
     def voice_pitch(v, ch):
         p = v.patch
-        return p.hz if p.hz else note_hz(v.note[1], bend[ch])
+        return p.hz if p.hz else note_hz(v.note[1] + v.offset, bend[ch]) * tune
+
+    def vibrato(t, v):                  # (from the note's start to t)
+        if v.patch.vib and not v.patch.hz:
+            cents, rate, delay = v.patch.vib
+            for tt in range(v.start + delay, t, 2):
+                wf(tt, v, v.hz * 2 ** (cents * math.sin(2 * math.pi * rate * (tt - v.start - delay) / RATE) / 1200))
 
     def note_off(t, v):
         if v.note is None:
             return
         t = max(t, v.start + 1)
+        vibrato(t, v)
         w(t, 0, v, 4, v.patch.wave)
         v.note = None
         v.released = t
@@ -306,7 +404,7 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
         return min(voices, key=lambda v: v.start)           # the oldest note gives way
 
     for sec, status, data in events:
-        t = round(sec * RATE) + 3       # (+3: room for the first hard restart)
+        t = round(sec / arr.tempo * RATE) + 3   # (+3: room for the first hard restart)
         last_tick = max(last_tick, t)
         kind, ch = status & 0xF0, status & 15
         if kind == 0x90 and data[1] > 0:
@@ -314,31 +412,49 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
             for v in voices:
                 if v.note == (ch, note):
                     note_off(t, v)
-            patch = drum_patch(note) if ch == 9 else PATCHES[program[ch]]
-            v = pick(ch, patch)
-            if v.note is not None:
-                note_off(t - 2, v)
-            # hard restart: envelope down fast, gate off, 2 ticks before
-            hr = max(t - 2, v.start + 1, 0)
-            w(hr, 0, v, 4, (v.patch.wave if v.patch else TRI))
-            w(hr, 1, v, 5, 0x00)
-            w(hr, 1, v, 6, 0x00)
-            v.note, v.channel, v.patch, v.start = (ch, note), ch, patch, t
-            v.level = level(ch, vel)
-            hz = voice_pitch(v, ch)
-            f = patch.raw if patch.raw else freq_reg(hz)
-            # (resumable: all of the voice's setup, even what it has already)
-            w(t, 1, v, 0, f, True)
-            w(t, 1, v, 1, f >> 8, True)
-            w(t, 1, v, 2, patch.pw, True)
-            w(t, 1, v, 3, patch.pw >> 8, True)
-            w(t, 1, v, 5, patch.a << 4 | patch.d, True)
-            w(t, 1, v, 6, sustain(v) << 4 | patch.r, True)
-            w(t, 2, v, 4, patch.wave | 1, True)
-            for dt, factor in patch.sweep:
-                f = freq_reg(hz * factor)
-                w(t + dt, 1, v, 0, f)
-                w(t + dt, 1, v, 1, f >> 8)
+            if ch == 9:
+                patch = arr.drums.get(note) or drum_patch(note)
+            else:
+                patch = arr.patches.get(ch) or PATCHES[program[ch]]
+            for offset in patch.chord:
+                v = pick(ch, patch)
+                if v.note is not None:
+                    stolen += 1
+                    note_off(t - 2, v)
+                # hard restart: envelope down fast, gate off, 2 ticks before
+                hr = max(t - 2, v.start + 1, 0)
+                w(hr, 0, v, 4, (v.patch.wave if v.patch else TRI))
+                w(hr, 1, v, 5, 0x00)
+                w(hr, 1, v, 6, 0x00)
+                v.note, v.channel, v.patch, v.start = (ch, note), ch, patch, t
+                v.offset = offset
+                v.level = level(ch, vel)
+                v.hz = hz = voice_pitch(v, ch)
+                if arr.cutoff is not None:
+                    route(t, v, patch.filt)
+                g = patch.glide
+                f = patch.raw if patch.raw else freq_reg(hz * (2 ** (g[0] / 12) if g else 1))
+                # (resumable: all of the voice's setup, even what it has already)
+                w(t, 1, v, 0, f, True)
+                w(t, 1, v, 1, f >> 8, True)
+                w(t, 1, v, 2, patch.pw, True)
+                w(t, 1, v, 3, patch.pw >> 8, True)
+                w(t, 1, v, 5, patch.a << 4 | patch.d, True)
+                w(t, 1, v, 6, sustain(v) << 4 | patch.r, True)
+                if patch.attack:
+                    w(t, 2, v, 4, patch.attack[0] | 1, True)
+                    w(t + patch.attack[1], 2, v, 4, patch.wave | 1)
+                else:
+                    w(t, 2, v, 4, patch.wave | 1, True)
+                if patch.retrig:
+                    w(t + patch.retrig, 2, v, 4, patch.wave)
+                    w(t + patch.retrig + 1, 2, v, 4, patch.wave | 1)
+                for dt, factor in patch.sweep:
+                    wf(t + dt, v, hz * factor)
+                if g:
+                    semis, ticks, shape = g
+                    for dt in range(1, ticks + 1):
+                        wf(t + dt, v, hz * 2 ** (semis * (1 - (dt / ticks) ** shape) / 12))
         elif kind == 0x80 or kind == 0x90:
             for v in voices:
                 if v.note == (ch, data[0]):
@@ -362,16 +478,22 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
             bend[ch] = ((data[1] << 7 | data[0]) - 8192) / 8192 * bendrange[ch]
             for v in voices:
                 if v.note and v.note[0] == ch and not v.patch.hz and not v.patch.raw:
-                    f = freq_reg(note_hz(v.note[1], bend[ch]))
-                    w(t, 1, v, 0, f)
-                    w(t, 1, v, 1, f >> 8)
+                    v.hz = voice_pitch(v, ch)
+                    wf(t, v, v.hz)
 
     # Records: the writes of each tick (the last write to a register wins,
     # except the control registers, whose every change counts), without the
     # ones that change nothing (unless forced: a note's setup).
+    for v in voices:                    # (vibrato up to the end, for notes still on)
+        if v.note is not None:
+            vibrato(round(end / arr.tempo * RATE) + 3, v)
     init = []
     for sid in range(3):
-        init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, sidvolume)]
+        if arr.cutoff is not None:      # (low-pass)
+            init += [(sid * 0x20 + 0x15, arr.cutoff & 7), (sid * 0x20 + 0x16, arr.cutoff >> 3),
+                     (sid * 0x20 + 0x17, arr.res << 4), (sid * 0x20 + 0x18, 0x10 | sidvolume)]
+        else:
+            init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, sidvolume)]
     out.sort(key=lambda e: (e[0], e[1]))
     ticks = {}
     for t, order, reg, val, force in out:
@@ -401,9 +523,13 @@ def convert(events, end, resumable=False, sidvolume=0x0F):
             kept = kept[100:]
         records.append((kept, 0))
         prev = t
-    loop = max(round(end * RATE) + 3, last_tick + RATE // 2)
+    loop = round(end / arr.tempo * RATE) + 3
+    if not arr.seamless:
+        loop = max(loop, last_tick + RATE // 2)
     w_, d_ = records[-1]
     records[-1] = (w_, d_ + loop - prev)
+    if stolen:
+        print(f"  ({stolen} notes cut short: more than 9 at once)")
     return records, loop / RATE
 
 
@@ -471,7 +597,7 @@ def main():
             title = os.path.splitext(os.path.basename(path))[0]
             name = re.sub(r"^\d+\s*-\s*", "", title)
             events, end = read_midi(path)
-            records, secs = convert(events, end)
+            records, secs = convert(events, end, arr=ARRANGEMENTS.get(name))
             data = encode(records)
             out = os.path.join(args.outdir, re.sub(r"\W+", "_", title).strip("_") + ".sid")
             open(out, "wb").write(psid(name, "Bobby Prince (MIDI->SID)", code, init, play,
