@@ -83,7 +83,16 @@ static uint16_t sidfxpriority;          // the AdLib effect playing's
 static int      sidfxsound;
 #define SIDFX(reg) SID(0x60 + (reg))    // the fourth SID, voice 1
 
-#define MUSIC_VOLUME 12                 // (of 15; tools/midi2sid.py's GAME_VOLUME)
+// The mix (set by ear, on the machine). The SIDs' volumes are 0-15: the
+// music's (MUSIC_VOLUME and DRUM_VOLUME are tools/midi2sid.py's GAME_VOLUME
+// and GAME_DRUM_VOLUME, which MUSIC.DAT also sets), the drums' on the third
+// SID (midi2sid.py: DRUM_SID), the AdLib effects' on the fourth. The
+// digitized effects' audio DMA channels: 0-255 at the nearest. Everything
+// adds up in the MEGA65's mixer: at full together, they distorted.
+#define MUSIC_VOLUME 11
+#define DRUM_VOLUME  8
+#define SFX_VOLUME   13
+#define DIGI_VOLUME  100
 
 // Gates and waveforms off (the voices fall silent), the music's volume, no
 // filter.
@@ -94,7 +103,7 @@ static void SID_Silence (void)
         for (uint8_t v = 0; v < 3; v++)
             SID(sid * 0x20 + v * 7 + 4) = 0;
         SID(sid * 0x20 + 0x17) = 0;
-        SID(sid * 0x20 + 0x18) = MUSIC_VOLUME;
+        SID(sid * 0x20 + 0x18) = sid == 2 ? DRUM_VOLUME : MUSIC_VOLUME;
     }
 }
 
@@ -187,7 +196,7 @@ void SD_Startup (void)
     for (i = 0; i < 0x80; i++)          // all four SIDs quiet
         SID(i) = 0;
     SID_Silence();
-    SID(0x78) = 0x0F;                   // (the fourth's volume)
+    SID(0x78) = SFX_VOLUME;             // (the fourth's volume)
     m65_sidfx_on = 0;
 
     // The digitized sounds: the list is VSWAP's last page, (start page,
@@ -336,11 +345,11 @@ void SD_PositionSound (int leftvol, int rightvol)
 }
 
 // Positions are 0 (loudest) to 15 (silent) per side. For now the louder
-// side sets the channel's volume (no panning yet): 0-255, full at 0.
+// side sets the channel's volume (no panning yet): DIGI_VOLUME at 0.
 void SD_SetPosition (int channel, int leftpos, int rightpos)
 {
     int pos = leftpos < rightpos ? leftpos : rightpos;
-    AUDIO_CH(channel & 3, 9) = (uint8_t) ((15 - pos) * 17);
+    AUDIO_CH(channel & 3, 9) = (uint8_t) ((15 - pos) * DIGI_VOLUME / 15);
 }
 
 int SD_PlayDigitized (word which, int leftpos, int rightpos)
@@ -425,7 +434,7 @@ static boolean SD_PlaySIDEffect (soundnames sound)
     SIDFX(0x15) = (uint8_t) (cutoff & 7);
     SIDFX(0x16) = (uint8_t) (cutoff >> 3);
     SIDFX(0x17) = cutoff == 0xFFFF ? 0 : 1;             // (voice 1 through it, or not)
-    SIDFX(0x18) = (uint8_t) ((cutoff == 0xFFFF ? 0 : 0x10) | 0x0F);
+    SIDFX(0x18) = (uint8_t) ((cutoff == 0xFFFF ? 0 : 0x10) | SFX_VOLUME);
     m65_sidfx_ptr = sfxfile.a + off;
     m65_sidfx_left = ticks;
     m65_sidfx_acc = 60;                 // (the first tick on the next interrupt)

@@ -288,29 +288,30 @@ def drum_patch(note):
 #     then shoots up to C5 within ~0.2s, swelling ~7dB, and holds;
 #   - the snares are dark (little above 4kHz); "Snare Flam" hits twice, ~35ms
 #     apart; the bass is round, most of it an octave above the written note.
-# The Mac's output is dark (8-bit samples, played at 22kHz): so most voices
-# go through the low-pass (not the stab and the tam tam, whose bite and
-# shimmer it has), and the bass sounds at both octaves. Rendered (sidplayfp,
+# The Mac's output is dark (8-bit samples, played at 22kHz), and most voices
+# went through a low-pass (cutoff 250: not the stab and the tam tam, whose
+# bite and shimmer it has); the bass sounds at both octaves. Rendered (sidplayfp,
 # 8580) and analysed the same way, the result is within ~2dB of the recording
 # by octave band, section by section, and the melody's missing 5th harmonic,
-# the rip's path and the stab's chord come out as measured. (The filter
-# cutoff is for the 8580; a 6581's filter is darker and varies by chip.)
+# the rip's path and the stab's chord come out as measured. On the machine,
+# though, the filtered voices came out far quieter than the rest (as with
+# DEFAULT's low-pass), so for now nothing is filtered.
 ARRANGEMENTS = {
     "Title": Arrangement(
-        tempo=102.88 / 100, cents=12.6, cutoff=250, res=2, seamless=True,
+        tempo=102.88 / 100, cents=12.6, seamless=True,
         patches={
-            0: P(PUL, 5, 4, 12, 5, 0x380, filt=True, vib=(6, 4.5, 24)),        # Melody Lo
-            1: P(SAW, 5, 4, 11, 5, filt=True, vib=(6, 4.5, 24)),               # Melody Hi
-            3: P(TRI, 0, 11, 0, 11, filt=True),                                # Chime
-            5: P(PUL, 0, 7, 10, 5, 0x400, chord=(0, 12), filt=True),           # Bass (and an octave up)
+            0: P(PUL, 5, 4, 12, 5, 0x380, vib=(6, 4.5, 24)),                   # Melody Lo
+            1: P(SAW, 5, 4, 11, 5, vib=(6, 4.5, 24)),                          # Melody Hi
+            3: P(TRI, 0, 11, 0, 11),                                           # Chime
+            5: P(PUL, 0, 7, 10, 5, 0x400, chord=(0, 12)),                      # Bass (and an octave up)
             6: P(SAW, 0, 3, 0, 3, chord=(-4, -2, 1, 5), attack=(NOI, 2)),      # Minor: Bbm7
-            7: P(SAW, 7, 6, 12, 7, glide=(-6.5, 42, 3), vib=(5, 4.5, 60), filt=True),   # Rip
-            8: P(TRI, 0, 10, 0, 10, filt=True),                                # Timpani
+            7: P(SAW, 7, 6, 12, 7, glide=(-6.5, 42, 3), vib=(5, 4.5, 60)),     # Rip
+            8: P(TRI, 0, 10, 0, 10),                                           # Timpani
         },
         drums={
-            40: P(NOI, 0, 3, 0, 3, raw=0x1000, filt=True),                     # Snare Hi
-            38: P(NOI, 0, 4, 0, 4, raw=0x0900, filt=True),                     # Snare Lo
-            39: P(NOI, 0, 3, 0, 3, raw=0x0C00, retrig=7, filt=True),           # Snare Flam
+            40: P(NOI, 0, 3, 0, 3, raw=0x1000),                                # Snare Hi
+            38: P(NOI, 0, 4, 0, 4, raw=0x0900),                                # Snare Lo
+            39: P(NOI, 0, 3, 0, 3, raw=0x0C00, retrig=7),                      # Snare Flam
             47: P(NOI, 3, 11, 0, 11, raw=0x0700),                              # Tam Tam
         }),
 }
@@ -325,7 +326,9 @@ ARRANGEMENTS = {
 # 450-1100 tried; 550 the best balance). The drums stay unfiltered. (Fitting
 # each instrument's waveform and envelope to FluidSynth's, tried as well, made
 # the songs no closer: on the SID a waveform also sets a voice's loudness.)
-DEFAULT = Arrangement(cutoff=550, filt_gm=True)
+# Off for now: on the machine the songs sounded wrong with it (the drums far
+# above the rest, and distorted), so it's being tried without.
+DEFAULT = Arrangement(cutoff=550, filt_gm=False)
 
 
 def freq_reg(hz):
@@ -352,10 +355,21 @@ class Voice:
         self.level = 1.0
 
 
-def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
+# The drums (channel 10) have the third SID to themselves, so that its
+# volume is theirs: on the SID a voice has no volume of its own, and a drum's
+# attack always peaks at full. The other parts take the first two SIDs, and
+# the third's free voices only when those are all busy (1.5% of the melodic
+# note-time over the 27 songs; those notes are then at the drums' volume).
+DRUM_SID = 2
+
+
+def convert(events, end, resumable=False, sidvolume=0x0F, arr=None, drumvolume=None):
     """resumable: every note writes all of its voice's setup, so that playing
     can start at any record (for the game, which resumes songs).
-    arr: the song's Arrangement, if it has one."""
+    arr: the song's Arrangement, if it has one. drumvolume: the drums' SID's
+    volume (DRUM_SID; sidvolume's if None)."""
+    vols = [sidvolume] * 3
+    vols[DRUM_SID] = sidvolume if drumvolume is None else drumvolume
     arr = arr or DEFAULT
     tune = 2 ** (arr.cents / 1200)
     routing = [0, 0, 0]                 # the voices each SID's filter takes
@@ -387,7 +401,7 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
             if resumable:               # (the filter's setup too: SID_Silence clears it)
                 out.append((t, 1, base + 0x15, arr.cutoff & 7, True))
                 out.append((t, 1, base + 0x16, arr.cutoff >> 3, True))
-                out.append((t, 1, base + 0x18, 0x10 | sidvolume, True))
+                out.append((t, 1, base + 0x18, 0x10 | vols[v.sid], True))
 
     def level(ch, vel):
         return ((vel / 127) * volume[ch] / 127 * expression[ch] / 127) ** 0.5
@@ -415,11 +429,15 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
         v.released = t
 
     def pick(ch, patch):
-        free = [v for v in voices if v.note is None]
+        drums = ch == 9
+        mine = [v for v in voices if (v.sid == DRUM_SID) == drums]
+        free = [v for v in mine if v.note is None]
+        if not free and not drums:                          # (the drums' SID, when free)
+            free = [v for v in voices if v.note is None]
         if free:
             same = [v for v in free if v.channel == ch and v.patch is patch]
             return same[0] if same else min(free, key=lambda v: v.released)
-        return min(voices, key=lambda v: v.start)           # the oldest note gives way
+        return min(mine, key=lambda v: v.start)             # the oldest note of its kind gives way
 
     for sec, status, data in events:
         t = round(sec / arr.tempo * RATE) + 3   # (+3: room for the first hard restart)
@@ -524,9 +542,9 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
     for sid in range(3):
         if arr.cutoff is not None:      # (low-pass)
             init += [(sid * 0x20 + 0x15, arr.cutoff & 7), (sid * 0x20 + 0x16, arr.cutoff >> 3),
-                     (sid * 0x20 + 0x17, arr.res << 4), (sid * 0x20 + 0x18, 0x10 | sidvolume)]
+                     (sid * 0x20 + 0x17, arr.res << 4), (sid * 0x20 + 0x18, 0x10 | vols[sid])]
         else:
-            init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, sidvolume)]
+            init += [(sid * 0x20 + 0x17, 0x00), (sid * 0x20 + 0x18, vols[sid])]
     out.sort(key=lambda e: (e[0], e[1]))
     ticks = {}
     for t, order, reg, val, force in out:
@@ -570,12 +588,12 @@ def convert(events, end, resumable=False, sidvolume=0x0F, arr=None):
 # their MIDI files ("NN - title.mid"). Checked against the shareware AdLib
 # data by notes and timing; the rest by title and the game's level table.
 # A third item is a title to prefer among the files of that number: the
-# title screen's song (NAZI_NOR, INTROSONG) is the Macintosh version's
-# title theme ("01 - Title.mid", see ARRANGEMENTS) where that file is there,
-# else the PC's ("01 - Horst-Wessel-Lied.mid").
+# title screen's song (NAZI_NOR, INTROSONG) is the PC's ("01 -
+# Horst-Wessel-Lied.mid"), not the Macintosh version's title theme ("01 -
+# Title.mid", see ARRANGEMENTS: prefer "Title" here to use it instead).
 GAME_SONGS = [
     ("CORNER", 8), ("DUNGEON", 13), ("WARMARCH", 7), ("GETTHEM", 3),
-    ("HEADACHE", 12), ("HITLWLTZ", 24), ("INTROCW3", 14), ("NAZI_NOR", 1, "Title"),
+    ("HEADACHE", 12), ("HITLWLTZ", 24), ("INTROCW3", 14), ("NAZI_NOR", 1, "Horst-Wessel-Lied"),
     ("NAZI_OMI", 9), ("POW", 5), ("SALUTE", 25), ("SEARCHN", 4),
     ("SUSPENSE", 6), ("VICTORS", 26), ("WONDERIN", 2), ("FUNKYOU", 20),
     ("ENDLEVEL", 21), ("GOINGAFT", 11), ("PREGNANT", 10), ("ULTIMATE", 18),
@@ -585,8 +603,11 @@ GAME_SONGS = [
 
 
 # The music's SID volume in the game (of 15): a little under full, so the
-# sound effects (audio DMA and the fourth SID) are not drowned out.
+# sound effects (audio DMA and the fourth SID) are not drowned out; the
+# drums' SID (DRUM_SID) lower still, as they sounded louder than the rest on
+# the machine. (m65_sd.cpp's MUSIC_VOLUME and DRUM_VOLUME must be the same.)
 GAME_VOLUME = 12
+GAME_DRUM_VOLUME = 7
 
 
 def song_title(path):
@@ -609,7 +630,7 @@ def write_game(path, mididir):
             streams.append(b"")
             continue
         events, end = read_midi(os.path.join(mididir, files[0]))
-        records, _ = convert(events, end, resumable=True, sidvolume=GAME_VOLUME,
+        records, _ = convert(events, end, resumable=True, sidvolume=GAME_VOLUME, drumvolume=GAME_DRUM_VOLUME,
                              arr=ARRANGEMENTS.get(song_title(files[0])))
         streams.append(encode(records, GAME_VOLUME))
         found += 1
