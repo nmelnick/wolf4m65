@@ -213,3 +213,29 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
+
+# MEGA65 build outputs
+mega65/*.prg
+mega65/*.elf
+mega65/*.o
+mega65/*.png
+mega65/*.mem
+mega65/obj/
+mega65/proto/*.prg
+mega65/proto/*.elf
+mega65/proto/*.o
+mega65/proto/*.png
+mega65/proto/*.mem
+mega65/testsd/MEGA65.ROM
+mega65/*.log
+mega65/build/
+mega65/testsd/mega65.d81
+
+# Game data (not ours to distribute)
+*.WL1
+*.WL6
+*.wl1
+*.wl6
+mega65/*.ser
+# Wolfenstein 3-D music (MIDI), supplied locally
+mega65/*.mid

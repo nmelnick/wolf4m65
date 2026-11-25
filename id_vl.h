@@ -43,8 +43,10 @@ void VL_GetPalette  (SDL_Color *palette);
 void VL_FadeOut     (int start, int end, int red, int green, int blue, int steps);
 void VL_FadeIn      (int start, int end, SDL_Color *palette, int steps);
 
+#ifndef MEGA65       // (surfaces are in far memory: no direct pixel pointers)
 byte *VL_LockSurface(SDL_Surface *surface);
 void VL_UnlockSurface(SDL_Surface *surface);
+#endif
 
 byte VL_GetPixel        (int x, int y);
 void VL_Plot            (int x, int y, int color);
@@ -60,6 +62,35 @@ void inline VL_ClearScreen(int color)
 {
     SDL_FillRect(curSurface, NULL, color);
 }
+
+#ifdef MEGA65
+
+// Pictures come from far memory (grsegs). The planar ("munged") layout is the
+// same as elsewhere.
+void VL_MemToLatch              (farptr source, int width, int height,
+                                    SDL_Surface *destSurface, int x, int y);
+void VL_MemToScreenScaledCoord  (farptr source, int width, int height, int scx, int scy);
+void VL_MemToScreenScaledCoord  (farptr source, int origwidth, int origheight, int srcx, int srcy,
+                                    int destx, int desty, int width, int height);
+
+void inline VL_MemToScreen (farptr source, int width, int height, int x, int y)
+{
+    VL_MemToScreenScaledCoord(source, width, height,
+        scaleFactor*x, scaleFactor*y);
+}
+
+// Draw a 320x200 planar picture (as stored for CA_CacheScreen) from far memory.
+void VL_FarPlanarToScreen (farptr pic);
+
+// Draw a 320x200 linear (row-major) picture from far memory.
+void VL_FarLinearToScreen (farptr pic);
+
+// Counts changes to curpal made by anything other than VL_SetPalette(curpal)
+// (other palettes, fades, fills), so code that builds a palette in curpal
+// can tell whether it is still there (see BuildShift in wl_play.cpp).
+extern unsigned vl_curpalchanges;
+
+#else
 
 void VL_MungePic                (byte *source, unsigned width, unsigned height);
 void VL_DrawPicBare             (int x, int y, byte *pic, int width, int height);
@@ -77,6 +108,8 @@ void inline VL_MemToScreen (byte *source, int width, int height, int x, int y)
 }
 
 void VL_MaskedToScreen (byte *source, int width, int height, int x, int y);
+
+#endif
 
 void VL_LatchToScreenScaledCoord (SDL_Surface *source, int xsrc, int ysrc,
     int width, int height, int scxdest, int scydest);

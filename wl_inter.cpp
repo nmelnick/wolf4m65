@@ -1234,6 +1234,9 @@ CheckHighScore (int32_t score, word other)
         fontcolor = 15;
         US_LineInput (PrintX, PrintY, Scores[n].name, 0, true, MaxHighName, 130);
 #endif
+#ifdef MEGA65
+        WriteConfig ();                 // (the high scores are in it; no one quits a MEGA65)
+#endif
     }
     else
     {

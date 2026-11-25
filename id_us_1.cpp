@@ -132,6 +132,65 @@ US_SetPrintRoutines(void (*measure)(const char *,word *,word *),
 //		supported.
 //
 ///////////////////////////////////////////////////////////////////////////
+#ifdef MEGA65
+
+// The next line of s (up to a newline or the end; at most sizeof line - 1
+// characters, the rest being the next "line") into line: its length. The
+// original strdup'ed the whole string to cut it up in place, which needs
+// the heap, and the heap is small here (a menu screen could find it full).
+enum { US_LINEMAX = 64 };
+static unsigned USL_NextLine(const char *s, char *line)
+{
+	unsigned n = 0;
+	while (s[n] && s[n] != '\n' && n < US_LINEMAX - 1)
+	{
+		line[n] = s[n];
+		n++;
+	}
+	line[n] = 0;
+	return n;
+}
+
+void
+US_Print(const char *s)
+{
+	char line[US_LINEMAX];
+	word w,h;
+
+	while (*s)
+	{
+		s += USL_NextLine(s, line);
+		USL_MeasureString(line,&w,&h);
+		px = PrintX;
+		py = PrintY;
+		USL_DrawString(line);
+		if (*s == '\n')
+		{
+			s++;
+			PrintX = WindowX;
+			PrintY += h;
+		}
+		else
+			PrintX += w;
+	}
+}
+
+void
+US_CPrint(const char *s)
+{
+	char line[US_LINEMAX];
+
+	while (*s)
+	{
+		s += USL_NextLine(s, line);
+		US_CPrintLine(line);
+		if (*s == '\n')
+			s++;
+	}
+}
+
+#else
+
 void
 US_Print(const char *sorg)
 {
@@ -167,6 +226,7 @@ US_Print(const char *sorg)
 	}
 	free(sstart);
 }
+#endif // MEGA65
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -260,6 +320,7 @@ US_CPrintLine(const char *s)
 //      Newlines are supported.
 //
 ///////////////////////////////////////////////////////////////////////////
+#ifndef MEGA65           // (MEGA65: above)
 void
 US_CPrint(const char *sorg)
 {
@@ -286,6 +347,7 @@ US_CPrint(const char *sorg)
 	}
 	free(sstart);
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //

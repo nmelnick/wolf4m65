@@ -38,9 +38,15 @@ objtype *newobj, *obj, *player, *lastobj, *objfreelist, *killerobj;
 boolean noclip, ammocheat;
 int godmode, singlestep, extravbls = 0;
 
+#ifdef MEGA65
+FarByteGrid<0, MAPSIZE> tilemap;        // storage set up in CAL_SetupMapFile
+FarByteGrid<1, MAPSIZE> spotvis;
+FarPtrGrid<objtype, MAPSIZE> actorat;
+#else
 byte tilemap[MAPSIZE][MAPSIZE]; // wall values only
 byte spotvis[MAPSIZE][MAPSIZE];
 objtype *actorat[MAPSIZE][MAPSIZE];
+#endif
 
 //
 // replacing refresh manager
@@ -72,6 +78,9 @@ boolean buttonheld[NUMBUTTONS];
 
 boolean demorecord, demoplayback;
 int8_t *demoptr, *lastdemoptr;
+#ifdef MEGA65
+farptr demofar, lastdemofar;    // demo playback reads straight from far memory
+#endif
 memptr demobuffer;
 
 //
@@ -430,18 +439,31 @@ void PollControls (void)
         //
         // read commands from demo buffer
         //
+#ifdef MEGA65
+        buttonbits = far_peek(demofar);
+#else
         buttonbits = *demoptr++;
+#endif
         for (i = 0; i < NUMBUTTONS; i++)
         {
             buttonstate[i] = buttonbits & 1;
             buttonbits >>= 1;
         }
 
+#ifdef MEGA65
+        controlx = (int8_t) far_peek(FAR_ADD(demofar, 1));
+        controly = (int8_t) far_peek(FAR_ADD(demofar, 2));
+        demofar = FAR_ADD(demofar, 3);
+
+        if (demofar.a == lastdemofar.a)
+            playstate = ex_completed;   // demo is done
+#else
         controlx = *demoptr++;
         controly = *demoptr++;
 
         if (demoptr == lastdemoptr)
             playstate = ex_completed;   // demo is done
+#endif
 
         controlx *= (int) tics;
         controly *= (int) tics;
@@ -954,11 +976,72 @@ void ContinueMusic (int offs)
 #define WHITETICS       6
 
 
-SDL_Color redshifts[NUMREDSHIFTS][256];
-SDL_Color whiteshifts[NUMWHITESHIFTS][256];
+//
+// Only one shifted palette is shown at a time, so instead of precomputing
+// all of them (9KB) the current one is built on demand into shiftpal (1KB).
+// The arithmetic is the same as the original precomputed tables.
+//
+#ifdef MEGA65
+// Built straight into curpal (1KB less); vl_curpalchanges tells whether
+// something else has overwritten it since.
+extern SDL_Color curpal[256];
+#define shiftpal curpal
+static unsigned shiftpalchanges;
+#else
+static SDL_Color shiftpal[256];
+#endif
+static int shiftpalkind;        // 0 = none built, 1 = red, 2 = white
+static int shiftpalstep;
 
 int damagecount, bonuscount;
 boolean palshifted;
+
+static SDL_Color *BuildShift (int kind, int i)
+{
+    SDL_Color *workptr, *baseptr;
+    int j, delta;
+
+    if (kind == shiftpalkind && i == shiftpalstep
+#ifdef MEGA65
+        && shiftpalchanges == vl_curpalchanges
+#endif
+        )
+        return shiftpal;
+
+    workptr = shiftpal;
+    baseptr = gamepal;
+
+    for (j = 0; j <= 255; j++)
+    {
+        if (kind == 1)
+        {
+            delta = 256 - baseptr->r;
+            workptr->r = baseptr->r + delta * i / REDSTEPS;
+            delta = -baseptr->g;
+            workptr->g = baseptr->g + delta * i / REDSTEPS;
+            delta = -baseptr->b;
+            workptr->b = baseptr->b + delta * i / REDSTEPS;
+        }
+        else
+        {
+            delta = 256 - baseptr->r;
+            workptr->r = baseptr->r + delta * i / WHITESTEPS;
+            delta = 248 - baseptr->g;
+            workptr->g = baseptr->g + delta * i / WHITESTEPS;
+            delta = 0-baseptr->b;
+            workptr->b = baseptr->b + delta * i / WHITESTEPS;
+        }
+        baseptr++;
+        workptr++;
+    }
+
+    shiftpalkind = kind;
+    shiftpalstep = i;
+#ifdef MEGA65
+    shiftpalchanges = vl_curpalchanges;
+#endif
+    return shiftpal;
+}
 
 /*
 =====================
@@ -970,48 +1053,7 @@ boolean palshifted;
 
 void InitRedShifts (void)
 {
-    SDL_Color *workptr, *baseptr;
-    int i, j, delta;
-
-
-//
-// fade through intermediate frames
-//
-    for (i = 1; i <= NUMREDSHIFTS; i++)
-    {
-        workptr = redshifts[i - 1];
-        baseptr = gamepal;
-
-        for (j = 0; j <= 255; j++)
-        {
-            delta = 256 - baseptr->r;
-            workptr->r = baseptr->r + delta * i / REDSTEPS;
-            delta = -baseptr->g;
-            workptr->g = baseptr->g + delta * i / REDSTEPS;
-            delta = -baseptr->b;
-            workptr->b = baseptr->b + delta * i / REDSTEPS;
-            baseptr++;
-            workptr++;
-        }
-    }
-
-    for (i = 1; i <= NUMWHITESHIFTS; i++)
-    {
-        workptr = whiteshifts[i - 1];
-        baseptr = gamepal;
-
-        for (j = 0; j <= 255; j++)
-        {
-            delta = 256 - baseptr->r;
-            workptr->r = baseptr->r + delta * i / WHITESTEPS;
-            delta = 248 - baseptr->g;
-            workptr->g = baseptr->g + delta * i / WHITESTEPS;
-            delta = 0-baseptr->b;
-            workptr->b = baseptr->b + delta * i / WHITESTEPS;
-            baseptr++;
-            workptr++;
-        }
-    }
+    shiftpalkind = 0;           // gamepal may have changed; rebuild on demand
 }
 
 
@@ -1098,12 +1140,12 @@ void UpdatePaletteShifts (void)
 
     if (red)
     {
-        VL_SetPalette (redshifts[red - 1], false);
+        VL_SetPalette (BuildShift (1, red), false);
         palshifted = true;
     }
     else if (white)
     {
-        VL_SetPalette (whiteshifts[white - 1], false);
+        VL_SetPalette (BuildShift (2, white), false);
         palshifted = true;
     }
     else if (palshifted)

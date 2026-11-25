@@ -107,7 +107,14 @@ void Quit(const char *errorStr, ...);
 #define MAXTICS 10
 #define DEMOTICS        4
 
+#ifdef MEGA65
+// The shareware levels spawn at most 109 actors (all difficulties, level 4);
+// 128 leaves room for the player and projectiles, and saves 1.3KB of near
+// memory. GetNewActor quits cleanly if it is ever exceeded.
+#define MAXACTORS       128
+#else
 #define MAXACTORS       150         // max number of nazis, etc / map
+#endif
 #define MAXSTATS        400         // max number of lamps, bonus, etc
 #define MAXDOORS        64          // max number of sliding doors
 #define MAXWALLTILES    64          // max number of wall tiles
@@ -183,6 +190,16 @@ void Quit(const char *errorStr, ...);
 
 #define mapshift        6
 #define MAPSIZE         (1<<mapshift)
+
+#ifdef MEGA65
+// Far map grids (tilemap, spotvis, actorat); see m65_fargrid.hpp.
+#include "m65_fargrid.hpp"
+typedef FarByteGrid<0, MAPSIZE>::Ptr tilemapptr;    // &tilemap[x][y]
+typedef FarByteGrid<1, MAPSIZE>::Ptr spotvisptr;    // &spotvis[x][y]
+#else
+typedef byte *tilemapptr;
+typedef byte *spotvisptr;
+#endif
 #define maparea         MAPSIZE*MAPSIZE
 
 #define mapheight       MAPSIZE
@@ -741,10 +758,19 @@ typedef struct statstruct
 {
     byte      tilex,tiley;
     short     shapenum;           // if shapenum == -1 the obj has been removed
-    byte      *visspot;
+    spotvisptr visspot;
     uint32_t  flags;
     byte      itemnumber;
 } statobj_t;
+
+#ifdef MEGA65
+// statobjlist is in far (chip) memory; statobjptr behaves like statobj_t *
+// (see m65_farstruct.hpp).
+#include "m65_farstruct.hpp"
+typedef FarStructPtr<statobj_t> statobjptr;
+#else
+typedef statobj_t *statobjptr;
+#endif
 
 
 //---------------------
@@ -888,7 +914,7 @@ typedef enum
 } exit_t;
 
 
-extern word *mapsegs[MAPPLANES];
+extern mapptr mapsegs[MAPPLANES];
 extern int mapon;
 
 /*
@@ -915,9 +941,17 @@ extern  int      shootdelta;
 extern  unsigned screenofs;
 
 extern  boolean  startgame;
+#ifdef MEGA65
+extern  boolean  lowdetail;             // walls traced every other column (wl_draw.cpp)
+#endif
 extern  char     str[80];
 extern  char     configdir[256];
 extern  char     configname[13];
+#ifdef MEGA65
+#define SAVEPATHLEN 13          // (no configdir: a path is an 8.3 name; the C stack is small)
+#else
+#define SAVEPATHLEN 300
+#endif
 
 //
 // Command line parameter variables
@@ -938,6 +972,7 @@ extern  boolean  param_ignorenumchunks;
 void            NewGame (int difficulty,int episode);
 void            CalcProjection (int32_t focal);
 void            NewViewSize (int width);
+void            WriteConfig (void);
 boolean         SetViewSize (unsigned width, unsigned height);
 boolean         LoadTheGame(FILE *file,int x,int y);
 boolean         SaveTheGame(FILE *file,int x,int y);
@@ -1002,9 +1037,21 @@ void UpdateSoundLoc(void);
 
 #define JOYSCALE                2
 
+#ifdef MEGA65
+// In far (chip) memory; they behave like the arrays (m65_fargrid.hpp).
+// TILEMAP_FLAT/SPOTVIS_FLAT stand for (byte *) tilemap/spotvis.
+extern  FarByteGrid<0, MAPSIZE> tilemap;        // wall values only
+extern  FarByteGrid<1, MAPSIZE> spotvis;
+extern  FarPtrGrid<objtype, MAPSIZE> actorat;
+#define TILEMAP_FLAT (tilemap.flat())
+#define SPOTVIS_FLAT (spotvis.flat())
+#else
 extern  byte            tilemap[MAPSIZE][MAPSIZE];      // wall values only
 extern  byte            spotvis[MAPSIZE][MAPSIZE];
 extern  objtype         *actorat[MAPSIZE][MAPSIZE];
+#define TILEMAP_FLAT ((byte *)tilemap)
+#define SPOTVIS_FLAT ((byte *)spotvis)
+#endif
 
 extern  objtype         *player;
 
@@ -1022,8 +1069,12 @@ extern  objtype     objlist[MAXACTORS];
 extern  boolean     buttonheld[NUMBUTTONS];
 extern  exit_t      playstate;
 extern  boolean     madenoise;
+#ifdef MEGA65
+extern  FarStructArray<statobj_t, MAXSTATS> statobjlist;
+#else
 extern  statobj_t   statobjlist[MAXSTATS];
-extern  statobj_t   *laststatobj;
+#endif
+extern  statobjptr  laststatobj;
 extern  objtype     *newobj,*killerobj;
 extern  doorobj_t   doorobjlist[MAXDOORS];
 extern  doorobj_t   *lastdoorobj;
@@ -1031,6 +1082,14 @@ extern  int         godmode;
 
 extern  boolean     demorecord,demoplayback;
 extern  int8_t      *demoptr, *lastdemoptr;
+#ifdef MEGA65
+extern  farptr      demofar, lastdemofar;
+
+// far_alloc and far_alloc_chip (m65_far.h) that Quit when memory runs out
+// (id_ca.cpp).
+farptr  FarAllocOrQuit (uint32_t size);
+farptr  ChipAllocOrQuit (uint16_t size);
+#endif
 extern  memptr      demobuffer;
 
 //
@@ -1108,11 +1167,23 @@ int DebugKeys (void);
 //
 // math tables
 //
+#ifdef MEGA65
+// In chip RAM (near memory is short): a view column's angle and wall height.
+extern  FarArray<short, M65_SCREEN_W> pixelangle;
+extern  FarArray<int, M65_SCREEN_W> wallheight;
+// In far (chip) memory, precomputed on the host (TABLES.BIN, see
+// tools/gen_tables.py); they behave like the arrays (m65_fararray.hpp).
+// costable overlays sintable with a quarter phase shift, as below.
+extern  FarArray<int32_t, FINEANGLES/4> finetangent;
+extern  FarArray<fixed, ANGLES+ANGLES/4> sintable;
+extern  FarArray<fixed, ANGLES> costable;
+#else
 extern  short *pixelangle;
+extern  int *wallheight;
 extern  int32_t finetangent[FINEANGLES/4];
 extern  fixed sintable[];
 extern  fixed *costable;
-extern  int *wallheight;
+#endif
 extern  word horizwall[],vertwall[];
 extern  int32_t    lasttimecount;
 extern  int32_t    frameon;
@@ -1125,6 +1196,9 @@ extern  fixed   viewx,viewy;                    // the focal point
 extern  fixed   viewsin,viewcos;
 
 void    ThreeDRefresh (void);
+#ifdef MEGA65
+void    TraceSetup (void);          // (once, at start-up: the ray caster's addresses)
+#endif
 void    CalcTics (void);
 
 typedef struct
@@ -1181,7 +1255,7 @@ void    Thrust (int angle, int32_t speed);
 void    SpawnPlayer (int tilex, int tiley, int dir);
 void    TakeDamage (int points,objtype *attacker);
 void    GivePoints (int32_t points);
-void    GetBonus (statobj_t *check);
+void    GetBonus (statobjptr check);
 void    GiveWeapon (int weapon);
 void    GiveAmmo (int ammo);
 void    GiveKey (int key);
@@ -1375,10 +1449,18 @@ void GP2X_ButtonUp(int button);
 =============================================================================
 */
 
+#ifdef MEGA65
+#include "m65_math.h"
+static inline fixed FixedMul(fixed a, fixed b)
+{
+	return m65_fixedmul(a, b);      // the same, on the hardware multiplier
+}
+#else
 static inline fixed FixedMul(fixed a, fixed b)
 {
 	return (fixed)(((int64_t)a * b + 0x8000) >> 16);
 }
+#endif
 
 #ifdef PLAYDEMOLIKEORIGINAL
     #define DEMOCHOOSE_ORIG_SDL(orig, sdl) ((demorecord || demoplayback) ? (orig) : (sdl))
@@ -1393,7 +1475,14 @@ static inline fixed FixedMul(fixed a, fixed b)
 
 #define GetTicks() ((SDL_GetTicks()*7)/100)
 
+#ifdef MEGA65
+// Pointers are 16-bit: the test above would never be true. The non-pointer
+// values stored in actorat are tile codes below 256, and nothing the game
+// points to lives in the first page.
+#define ISPOINTER(x) (((uintptr_t)(x)) >= 256)
+#else
 #define ISPOINTER(x) ((((uintptr_t)(x)) & ~0xffff) != 0)
+#endif
 
 #define CHECKMALLOCRESULT(x) if(!(x)) Quit("Out of memory at %s:%i", __FILE__, __LINE__)
 
@@ -1418,16 +1507,19 @@ static inline fixed FixedMul(fixed a, fixed b)
 #define lengthof(x) (sizeof(x) / sizeof(*(x)))
 #define endof(x)    ((x) + lengthof(x))
 
+// The casts matter where int is 16 bits (MEGA65): without them the shifts
+// overflow int, or sign-extend a high byte into the upper bits.
 static inline word READWORD(byte *&ptr)
 {
-    word val = ptr[0] | ptr[1] << 8;
+    word val = (word) ptr[0] | (word) ptr[1] << 8;
     ptr += 2;
     return val;
 }
 
 static inline longword READLONGWORD(byte *&ptr)
 {
-    longword val = ptr[0] | ptr[1] << 8 | ptr[2] << 16 | ptr[3] << 24;
+    longword val = (longword) ptr[0] | (longword) ptr[1] << 8
+                 | (longword) ptr[2] << 16 | (longword) ptr[3] << 24;
     ptr += 4;
     return val;
 }

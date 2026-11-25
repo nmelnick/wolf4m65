@@ -25,6 +25,12 @@ loaded into the data segment
 #endif
 
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_huff.h"
+#include "m65_mapexp.h"
+#include "m65_posix.h"
+#include "m65_video.h"
+#endif
 #pragma hdrstop
 
 #define THREEBYTEGRSTARTS
@@ -58,15 +64,29 @@ typedef struct
 =============================================================================
 */
 
+#ifndef MEGA65       // (the MEGA65 decompresses straight from far memory)
 #define BUFFERSIZE 0x1000
 static int32_t bufferseg[BUFFERSIZE/4];
+#endif
 
 int     mapon;
 
-word    *mapsegs[MAPPLANES];
+mapptr  mapsegs[MAPPLANES];
+#ifdef MEGA65
+// Where each map's header is in GAMEMAPS (which stays in attic RAM): 4 bytes
+// per map rather than a 38-byte copy on the near heap. -1: no map.
+static int32_t mapheaderpos[NUMMAPS];
+#else
 static maptype* mapheaderseg[NUMMAPS];
+#endif
+#ifdef MEGA65
+FarArray<farptr, NUMCHUNKS> grsegs;     // storage in chip RAM (CAL_SetupGrFile)
+static farptr grfar, mapfar;            // VGAGRAPH, GAMEMAPS in attic
+static farptr grheadfar, audioheadfar;  // VGAHEAD, AUDIOHED: offsets read in place
+#else
 byte    *audiosegs[NUMSNDCHUNKS];
 byte    *grsegs[NUMCHUNKS];
+#endif
 
 word    RLEWtag;
 
@@ -93,8 +113,10 @@ static const char afilename[] = "audiot.";
 
 void CA_CannotOpen(const char *string);
 
+#ifndef MEGA65       // (read in place from VGAHEAD / AUDIOHED on the MEGA65)
 static int32_t  grstarts[NUMCHUNKS + 1];
 static int32_t* audiostarts; // array of offsets in audio / audiot
+#endif
 
 #ifdef GRHEADERLINKED
 huffnode *grhuffman;
@@ -111,11 +133,42 @@ int32_t   chunkcomplen,chunkexplen;
 SDMode oldsoundmode;
 
 
+#ifdef MEGA65
+farptr FarAllocOrQuit (uint32_t size)
+{
+    farptr p = far_alloc(size);
+    if (FAR_ISNULL(p))
+        Quit("Out of far memory");
+    return p;
+}
+
+farptr ChipAllocOrQuit (uint16_t size)
+{
+    farptr p = far_alloc_chip(size);
+    if (FAR_ISNULL(p))
+        Quit("Out of chip far memory");
+    return p;
+}
+
+static int32_t GRFILEPOS(const size_t idx)
+{
+	assert(idx < NUMCHUNKS + 1);
+	farptr p = FAR_ADD(grheadfar, 3 * (uint32_t) idx);
+	int32_t val = (int32_t) far_peekw(p) | (int32_t) far_peek(FAR_ADD(p, 2)) << 16;
+	return val == 0x00FFFFFF ? -1 : val;
+}
+
+static int32_t AUDIOSTART(int chunk)
+{
+	return (int32_t) far_peekl(FAR_ADD(audioheadfar, 4 * (uint32_t) chunk));
+}
+#else
 static int32_t GRFILEPOS(const size_t idx)
 {
 	assert(idx < lengthof(grstarts));
 	return grstarts[idx];
 }
+#endif
 
 /*
 =============================================================================
@@ -481,10 +534,15 @@ void CAL_SetupGrFile (void)
     long headersize = lseek(handle, 0, SEEK_END);
     lseek(handle, 0, SEEK_SET);
 
-#ifndef APOGEE_1_0
-	int expectedsize = lengthof(grstarts) - numEpisodesMissing;
+#ifdef MEGA65
+	const int numgrstarts = NUMCHUNKS + 1;
 #else
-	int expectedsize = lengthof(grstarts);
+	const int numgrstarts = lengthof(grstarts);
+#endif
+#ifndef APOGEE_1_0
+	int expectedsize = numgrstarts - numEpisodesMissing;
+#else
+	int expectedsize = numgrstarts;
 #endif
 
     if(!param_ignorenumchunks && headersize / 3 != (long) expectedsize)
@@ -494,6 +552,13 @@ void CAL_SetupGrFile (void)
             "(For mod developers: perhaps you forgot to update NUMCHUNKS?)",
             fname, headersize / 3, expectedsize);
 
+#ifdef MEGA65
+    // The offsets are read in place (GRFILEPOS); no near table.
+    close(handle);
+    grheadfar = m65_file_far(fname, NULL);
+
+    grsegs.init(ChipAllocOrQuit(grsegs.bytes()));
+#else
     byte data[lengthof(grstarts) * 3];
     read(handle, data, sizeof(data));
     close(handle);
@@ -501,10 +566,12 @@ void CAL_SetupGrFile (void)
     const byte* d = data;
     for (int32_t* i = grstarts; i != endof(grstarts); ++i)
     {
-        const int32_t val = d[0] | d[1] << 8 | d[2] << 16;
+        // (casts: int may be 16 bits)
+        const int32_t val = (int32_t) d[0] | (int32_t) d[1] << 8 | (int32_t) d[2] << 16;
         *i = (val == 0x00FFFFFF ? -1 : val);
         d += 3;
     }
+#endif
 #endif
 
 //
@@ -523,12 +590,23 @@ void CAL_SetupGrFile (void)
 //
     pictable=(pictabletype *) malloc(NUMPICS*sizeof(pictabletype));
     CHECKMALLOCRESULT(pictable);
+#ifdef MEGA65
+    // The whole file is in attic RAM: expand straight from it.
+    grfar = m65_file_far(fname, NULL);
+    {
+        farptr tmp = FarAllocOrQuit(NUMPICS * sizeof(pictabletype));
+        far_huff_expand(FAR_ADD(grfar, GRFILEPOS(STRUCTPIC) + 4), tmp,
+                        NUMPICS * sizeof(pictabletype), (const m65_huffnode *)grhuffman);
+        far_read(pictable, tmp, NUMPICS * sizeof(pictabletype));
+    }
+#else
     CAL_GetGrChunkLength(STRUCTPIC);                // position file pointer
     compseg=(byte *) malloc(chunkcomplen);
     CHECKMALLOCRESULT(compseg);
     read (grhandle,compseg,chunkcomplen);
     CAL_HuffExpand(compseg, (byte*)pictable, NUMPICS * sizeof(pictabletype), grhuffman);
     free(compseg);
+#endif
 }
 
 //==========================================================================
@@ -577,6 +655,9 @@ void CAL_SetupMapFile (void)
     maphandle = open(fname, O_RDONLY | O_BINARY);
     if (maphandle == -1)
         CA_CannotOpen(fname);
+#ifdef MEGA65
+    mapfar = m65_file_far(fname, NULL);
+#endif
 #else
     strcpy(fname,mfilename);
     strcat(fname,extension);
@@ -592,6 +673,9 @@ void CAL_SetupMapFile (void)
     for (i=0;i<NUMMAPS;i++)
     {
         pos = tinf->headeroffsets[i];
+#ifdef MEGA65
+        mapheaderpos[i] = pos;
+#else
         if (pos<0)                          // $FFFFFFFF start is a sparse map
             continue;
 
@@ -599,6 +683,7 @@ void CAL_SetupMapFile (void)
         CHECKMALLOCRESULT(mapheaderseg[i]);
         lseek(maphandle,pos,SEEK_SET);
         read (maphandle,(memptr)mapheaderseg[i],sizeof(maptype));
+#endif
     }
 
     free(tinf);
@@ -608,9 +693,25 @@ void CAL_SetupMapFile (void)
 //
     for (i=0;i<MAPPLANES;i++)
     {
+#ifdef MEGA65
+        // Chip RAM: the planes are read often during play.
+        mapsegs[i] = ChipAllocOrQuit(maparea*2);
+#else
         mapsegs[i]=(word *) malloc(maparea*2);
         CHECKMALLOCRESULT(mapsegs[i]);
+#endif
     }
+
+#ifdef MEGA65
+    // actorat, tilemap and spotvis live next to the planes, in chip RAM
+    // (see wl_def.h).
+    {
+        actorat.init(ChipAllocOrQuit(actorat.bytes()));
+        tilemap.init(ChipAllocOrQuit(tilemap.bytes()));
+        spotvis.init(ChipAllocOrQuit(spotvis.bytes()));
+        statobjlist.init(ChipAllocOrQuit(statobjlist.bytes()));
+    }
+#endif
 }
 
 
@@ -635,10 +736,16 @@ void CAL_SetupAudioFile (void)
     strcpy(fname,aheadname);
     strcat(fname,audioext);
 
+#ifdef MEGA65
+    audioheadfar = m65_file_far(fname, NULL);   // offsets read in place
+    if (FAR_ISNULL(audioheadfar))
+        CA_CannotOpen(fname);
+#else
     void* ptr;
     if (!CA_LoadFile(fname, &ptr))
         CA_CannotOpen(fname);
     audiostarts = (int32_t*)ptr;
+#endif
 
 //
 // open the data file
@@ -732,6 +839,23 @@ void CA_Shutdown (void)
 ======================
 */
 
+#ifdef MEGA65
+
+// Audio chunks are not cached: the MEGA65 sound code plays data of its own
+// (m65_sd.cpp); only their sizes are asked for.
+
+int32_t CA_CacheAudioChunk (int chunk)
+{
+    return AUDIOSTART(chunk+1) - AUDIOSTART(chunk);
+}
+
+void CA_CacheAdlibSoundChunk (int chunk)
+{
+    CA_CacheAudioChunk(chunk);
+}
+
+#else
+
 int32_t CA_CacheAudioChunk (int chunk)
 {
     int32_t pos = audiostarts[chunk];
@@ -788,6 +912,8 @@ void CA_CacheAdlibSoundChunk (int chunk)
 
     audiosegs[chunk]=(byte *) sound;
 }
+
+#endif
 
 //===========================================================================
 
@@ -861,6 +987,104 @@ cachein:
 =
 ======================
 */
+
+#ifdef MEGA65
+
+//
+// Expanded size of a chunk. Advances source past the explicit length
+// longword if the chunk has one.
+//
+static int32_t CAL_GrChunkExpandedSize (int chunk, farptr *source)
+{
+    if (chunk >= STARTTILE8 && chunk < STARTEXTERNS)
+    {
+        if (chunk<STARTTILE8M)          // tile 8s are all in one chunk!
+            return 64*NUMTILE8;
+        else if (chunk<STARTTILE16)
+            return 128*NUMTILE8M;
+        else if (chunk<STARTTILE16M)    // all other tiles are one/chunk
+            return 64*4;
+        else if (chunk<STARTTILE32)
+            return 128*4;
+        else if (chunk<STARTTILE32M)
+            return 64*16;
+        else
+            return 128*16;
+    }
+
+    int32_t expanded = (int32_t) far_peekl(*source);
+    *source = FAR_ADD(*source, 4);
+    return expanded;
+}
+
+void CA_CacheGrChunk (int chunk)
+{
+    int32_t pos, expanded;
+    farptr source;
+
+    if (!FAR_ISNULL(grsegs[chunk]))
+        return;                             // already in memory
+
+    pos = GRFILEPOS(chunk);
+    if (pos<0)                              // $FFFFFFFF start is a sparse tile
+        return;
+
+    source = FAR_ADD(grfar, pos);
+    expanded = CAL_GrChunkExpandedSize(chunk, &source);
+
+    grsegs[chunk] = FarAllocOrQuit(expanded);
+    far_huff_expand(source, grsegs[chunk], expanded, (const m65_huffnode *)grhuffman);
+}
+
+//
+// Decompresses a chunk onto the screen. The planar picture is expanded into a
+// reusable far scratch buffer, and the video layer draws it from there. The
+// first few pictures (the title and credits screens, which come round again
+// with every demo) are kept in far memory too, turned from planar to linear
+// by the DMA (a plane at a time, every fourth byte): next time they are one
+// copy to the screen.
+//
+#define SCREENCACHE 4
+
+void CA_CacheScreen (int chunk)
+{
+    static farptr scratch;
+    static struct { int chunk; farptr pic; } cache[SCREENCACHE];
+    static int cached;
+    int32_t expanded;
+    farptr source, pic;
+    int i;
+
+    for (i = 0; i < cached; i++)
+    {
+        if (cache[i].chunk == chunk)
+        {
+            VL_FarLinearToScreen(cache[i].pic);
+            return;
+        }
+    }
+
+    if (FAR_ISNULL(scratch))
+        scratch = FarAllocOrQuit(64000);
+
+    source = FAR_ADD(grfar, GRFILEPOS(chunk));
+    expanded = CAL_GrChunkExpandedSize(chunk, &source);
+    far_huff_expand(source, scratch, expanded, (const m65_huffnode *)grhuffman);
+
+    if (cached < SCREENCACHE && expanded == 64000
+        && !FAR_ISNULL(pic = far_alloc(64000)))
+    {
+        for (i = 0; i < 4; i++)
+            m65_dma_scale(pic.a + i, scratch.a + i * 16000UL, 16000, 0x100, 4);
+        cache[cached].chunk = chunk;
+        cache[cached++].pic = pic;
+        VL_FarLinearToScreen(pic);
+    }
+    else
+        VL_FarPlanarToScreen(scratch);
+}
+
+#else
 
 void CAL_ExpandGrChunk (int chunk, int32_t *source)
 {
@@ -1028,6 +1252,8 @@ void CA_CacheScreen (int chunk)
     free(bigbufferseg);
 }
 
+#endif // MEGA65
+
 //==========================================================================
 
 /*
@@ -1039,6 +1265,52 @@ void CA_CacheScreen (int chunk)
 =
 ======================
 */
+
+#ifdef MEGA65
+
+#ifndef CARMACIZED
+#error "The MEGA65 map loader only handles Carmack-compressed maps"
+#endif
+
+//
+// Planes are expanded straight from the copy of GAMEMAPS in attic RAM, through
+// a far scratch buffer for the intermediate (Carmack-expanded) RLEW data.
+//
+void CA_CacheMap (int mapnum)
+{
+    static farptr scratch;
+    const word scratchsize = 0x4000;
+    int     plane;
+    farptr  source;
+    word    expanded;
+
+    mapon = mapnum;
+
+    if (FAR_ISNULL(scratch))
+        scratch = FarAllocOrQuit(scratchsize);
+
+    for (plane = 0; plane<MAPPLANES; plane++)
+    {
+        if (mapheaderpos[mapnum] < 0)
+            Quit("CA_CacheMap: no such map");
+        source = FAR_ADD(mapfar, far_peekl(FAR_ADD(mapfar, mapheaderpos[mapnum]
+                                           + offsetof(maptype, planestart) + plane*4)));
+
+        //
+        // unhuffman, then unRLEW
+        // The huffman'd chunk has a two byte expanded length first
+        // The resulting RLEW chunk also does, even though it's not really
+        // needed
+        //
+        expanded = far_peekw(source);
+        if (expanded > scratchsize)
+            Quit("CA_CacheMap: plane too large");
+        far_carmack_expand(FAR_ADD(source, 2), scratch, expanded);
+        far_rlew_expand(FAR_ADD(scratch, 2), mapsegs[plane].far(), maparea*2, RLEWtag);
+    }
+}
+
+#else
 
 void CA_CacheMap (int mapnum)
 {
@@ -1104,6 +1376,8 @@ void CA_CacheMap (int mapnum)
             free(bigbufferseg);
     }
 }
+
+#endif // MEGA65
 
 //===========================================================================
 

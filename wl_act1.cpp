@@ -12,8 +12,12 @@
 */
 
 
+#ifdef MEGA65
+FarStructArray<statobj_t, MAXSTATS> statobjlist;   // storage: CAL_SetupMapFile
+#else
 statobj_t       statobjlist[MAXSTATS];
-statobj_t       *laststatobj;
+#endif
+statobjptr      laststatobj;
 
 
 struct
@@ -209,7 +213,7 @@ void SpawnStatic (int tilex, int tiley, int type)
 void PlaceItemType (int itemtype, int tilex, int tiley)
 {
     int type;
-    statobj_t *spot;
+    statobjptr spot;
 
     //
     // find the item number
@@ -360,7 +364,7 @@ void InitDoorList (void)
 
 void SpawnDoor (int tilex, int tiley, boolean vertical, int lock)
 {
-    word *map;
+    mapptr map;
 
     if (doornum==MAXDOORS)
         Quit ("64+ doors on level!");
@@ -563,7 +567,7 @@ void DoorOpen (int door)
 void DoorOpening (int door)
 {
     unsigned area1,area2;
-    word *map;
+    mapptr map;
     int32_t position;
 
     position = doorposition[door];
@@ -631,7 +635,7 @@ void DoorOpening (int door)
 void DoorClosing (int door)
 {
     unsigned area1,area2;
-    word *map;
+    mapptr map;
     int32_t position;
     int tilex,tiley;
 

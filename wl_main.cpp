@@ -7,6 +7,10 @@
 #endif
 
 #include "wl_def.h"
+#ifdef MEGA65
+#include "m65_posix.h"
+#include "m65_platform.h"
+#endif
 #pragma hdrstop
 #include "wl_atmos.h"
 #include <SDL_syswm.h>
@@ -24,7 +28,9 @@
 =============================================================================
 */
 
+#ifndef MEGA65
 extern byte signon[];
+#endif
 
 /*
 =============================================================================
@@ -126,7 +132,7 @@ void ReadConfig(void)
     SMMode  sm;
     SDSMode sds;
 
-    char configpath[300];
+    char configpath[SAVEPATHLEN];
 
 #ifdef _arch_dreamcast
     DC_LoadFromVMU(configname);
@@ -172,6 +178,10 @@ void ReadConfig(void)
 
         read(file,&viewsize,sizeof(viewsize));
         read(file,&mouseadjustment,sizeof(mouseadjustment));
+#ifdef MEGA65
+        read(file,&lowdetail,sizeof(lowdetail));    // (absent from older configs: stays off)
+        if(lowdetail) lowdetail=true;
+#endif
 
         close(file);
 
@@ -251,7 +261,7 @@ noconfig:
 
 void WriteConfig(void)
 {
-    char configpath[300];
+    char configpath[SAVEPATHLEN];
 
 #ifdef _arch_dreamcast
     fs_unlink(configname);
@@ -289,6 +299,9 @@ void WriteConfig(void)
 
         write(file,&viewsize,sizeof(viewsize));
         write(file,&mouseadjustment,sizeof(mouseadjustment));
+#ifdef MEGA65
+        write(file,&lowdetail,sizeof(lowdetail));
+#endif
 
         close(file);
     }
@@ -348,6 +361,42 @@ int32_t DoChecksum(byte *source,unsigned size,int32_t checksum)
     return checksum;
 }
 
+#ifdef MEGA65
+//
+// fwrite (writing) or fread of a far block, with the same checksum as
+// DoChecksum over the whole block (pairs of adjacent bytes, including across
+// the chunks).
+//
+static int32_t FarFileBlock(farptr block, unsigned size, FILE *file, int32_t checksum,
+                            bool writing)
+{
+    byte buf[64];
+    int prev = -1;
+    while (size)
+    {
+        unsigned n = size < sizeof buf ? size : sizeof buf;
+        if (writing)
+        {
+            far_read(buf, block, n);
+            fwrite(buf, n, 1, file);
+        }
+        else
+        {
+            fread(buf, n, 1, file);
+            far_write(block, buf, n);
+        }
+        for (unsigned i = 0; i < n; i++)
+        {
+            if (prev >= 0) checksum += prev ^ buf[i];
+            prev = buf[i];
+        }
+        block = FAR_ADD(block, n);
+        size -= n;
+    }
+    return checksum;
+}
+#endif
+
 
 /*
 ==================
@@ -364,7 +413,7 @@ boolean SaveTheGame(FILE *file,int x,int y)
 {
 //    struct diskfree_t dfree;
 //    int32_t avail,size,checksum;
-    int checksum;
+    int32_t checksum;           // (as LoadTheGame's: an int is 16 bits on the MEGA65)
     objtype *ob;
     objtype nullobj;
     statobj_t nullstat;
@@ -383,10 +432,22 @@ boolean SaveTheGame(FILE *file,int x,int y)
 
     size += sizeof(gamestate) +
             sizeof(LRstruct)*LRpack +
+#ifdef MEGA65
+            tilemap.bytes() +
+#else
             sizeof(tilemap) +
+#endif
+#ifdef MEGA65
+            actorat.bytes() +
+#else
             sizeof(actorat) +
+#endif
             sizeof(laststatobj) +
+#ifdef MEGA65
+            statobjlist.bytes() +
+#else
             sizeof(statobjlist) +
+#endif
             sizeof(doorposition) +
             sizeof(pwallstate) +
             sizeof(pwalltile) +
@@ -412,8 +473,12 @@ boolean SaveTheGame(FILE *file,int x,int y)
     checksum = DoChecksum((byte *)&LevelRatios[0],sizeof(LRstruct)*LRpack,checksum);
 
     DiskFlopAnim(x,y);
+#ifdef MEGA65
+    checksum = FarFileBlock(tilemap.far(),tilemap.bytes(),file,checksum,true);
+#else
     fwrite(tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
+#endif
     DiskFlopAnim(x,y);
 
     int i;
@@ -457,15 +522,21 @@ boolean SaveTheGame(FILE *file,int x,int y)
     fwrite(&nullobj,sizeof(nullobj),1,file);
 
     DiskFlopAnim(x,y);
-    word laststatobjnum=(word) (laststatobj-statobjlist);
+    word laststatobjnum=(word) (laststatobj-&statobjlist[0]);
     fwrite(&laststatobjnum,sizeof(laststatobjnum),1,file);
     checksum = DoChecksum((byte *)&laststatobjnum,sizeof(laststatobjnum),checksum);
 
     DiskFlopAnim(x,y);
     for(i=0;i<MAXSTATS;i++)
     {
+#ifdef MEGA65
+        nullstat = *(statobjlist+i);
+#else
         memcpy(&nullstat,statobjlist+i,sizeof(nullstat));
+#endif
+#ifndef MEGA65       // (on the MEGA65 visspot already is an offset into spotvis)
         nullstat.visspot=(byte *) ((uintptr_t) nullstat.visspot-(uintptr_t)spotvis);
+#endif
         fwrite(&nullstat,sizeof(nullstat),1,file);
         checksum = DoChecksum((byte *)&nullstat,sizeof(nullstat),checksum);
     }
@@ -531,8 +602,12 @@ boolean LoadTheGame(FILE *file,int x,int y)
     SetupGameLevel ();
 
     DiskFlopAnim(x,y);
+#ifdef MEGA65
+    checksum = FarFileBlock(tilemap.far(),tilemap.bytes(),file,checksum,false);
+#else
     fread (tilemap,sizeof(tilemap),1,file);
     checksum = DoChecksum((byte *)tilemap,sizeof(tilemap),checksum);
+#endif
 
     DiskFlopAnim(x,y);
 
@@ -581,8 +656,14 @@ boolean LoadTheGame(FILE *file,int x,int y)
     {
         fread(&nullstat,sizeof(nullstat),1,file);
         checksum = DoChecksum((byte *)&nullstat,sizeof(nullstat),checksum);
+#ifndef MEGA65
         nullstat.visspot=(byte *) ((uintptr_t)nullstat.visspot+(uintptr_t)spotvis);
+#endif
+#ifdef MEGA65
+        *(statobjlist+i) = nullstat;
+#else
         memcpy(statobjlist+i,&nullstat,sizeof(nullstat));
+#endif
     }
 
     DiskFlopAnim(x,y);
@@ -608,7 +689,7 @@ boolean LoadTheGame(FILE *file,int x,int y)
 
     if (gamestate.secretcount)      // assign valid floorcodes under moved pushwalls
     {
-        word *map, *obj; word tile, sprite;
+        mapptr map, obj; word tile, sprite;
         map = mapsegs[0]; obj = mapsegs[1];
         for (y=0;y<mapheight;y++)
             for (x=0;x<mapwidth;x++)
@@ -703,6 +784,37 @@ void ShutdownId (void)
 
 const float radtoint = (float)(FINEANGLES/2/PI);
 
+#ifdef MEGA65
+
+//
+// The tables are computed on the host by the original code below (see
+// mega65/tools/gen_tables.py) and loaded into chip RAM: no floating point.
+// After them in the file, CalcProjection's results for each view width (64
+// to 320 in steps of 16: a scale, then halfview angles), which stay there.
+//
+#define PROJBYTES   (((320 - 64) / 16 + 1) * 4L + (64 + 320) / 2 * ((320 - 64) / 16 + 1))
+static farptr projtables;
+
+void BuildTables (void)
+{
+    uint32_t size;
+    farptr tables = m65_file_far ("tables.bin", &size);
+    farptr chip;
+
+    if (FAR_ISNULL(tables) || size != finetangent.bytes() + sintable.bytes() + PROJBYTES)
+        CA_CannotOpen ("tables.bin");
+    size -= PROJBYTES;
+    chip = ChipAllocOrQuit (size);
+    far_copy (chip, tables, size);
+    projtables = FAR_ADD(tables, size);
+
+    finetangent.use (chip);
+    sintable.use (FAR_ADD(chip, finetangent.bytes()));
+    costable.use (FAR_ADD(chip, finetangent.bytes() + (ANGLES/4) * sizeof(fixed)));
+}
+
+#else
+
 void BuildTables (void)
 {
     //
@@ -739,6 +851,8 @@ void BuildTables (void)
 #endif
 }
 
+#endif // MEGA65
+
 //===========================================================================
 
 
@@ -751,6 +865,37 @@ void BuildTables (void)
 =
 ====================
 */
+
+#ifdef MEGA65
+
+// From TABLES.BIN (BuildTables): the double-precision atan of the original
+// takes seconds on the MEGA65, and focal is always FOCALLENGTH.
+void CalcProjection (int32_t focal)
+{
+    int16_t intang[8];
+    int     i, j, w, halfview = viewwidth/2;
+    farptr  p = projtables;
+
+    if (focal != FOCALLENGTH || viewwidth < 64 || viewwidth > 320 || viewwidth % 16)
+        Quit ("CalcProjection: no table for view width %d", viewwidth);
+    for (w = 64; w < viewwidth; w += 16)
+        p = FAR_ADD(p, 4 + w);          // (a scale, then w/2 angles)
+    focallength = focal;
+    scale = far_peekl (p);
+    heightnumerator = (TILEGLOBAL*scale)>>6;
+    p = FAR_ADD(p, 4);
+    for (i=0;i<halfview;i+=8)           // (halfview: a multiple of 8)
+    {
+        far_read (intang, FAR_ADD(p, i * 2), sizeof intang);
+        for (j=0;j<8;j++)
+        {
+            pixelangle[halfview-1-(i+j)] = intang[j];
+            pixelangle[halfview+i+j] = -intang[j];
+        }
+    }
+}
+
+#else
 
 void CalcProjection (int32_t focal)
 {
@@ -791,6 +936,8 @@ void CalcProjection (int32_t focal)
         pixelangle[halfview+i] = -intang;
     }
 }
+
+#endif // MEGA65
 
 
 
@@ -834,8 +981,17 @@ void SignonScreen (void)                        // VGA version
 {
     VL_SetVGAPlaneMode ();
 
+#ifdef MEGA65
+    // The picture is a data file (extracted from signon.cpp at build time),
+    // loaded into attic RAM rather than compiled in.
+    farptr pic = m65_file_far ("signon.bin", NULL);
+    if (FAR_ISNULL(pic))
+        CA_CannotOpen ("signon.bin");
+    VL_FarLinearToScreen (pic);
+#else
     VL_MungePic (signon,320,200);
     VL_MemToScreen (signon,320,200,0,0);
+#endif
 }
 
 
@@ -1319,6 +1475,9 @@ static void InitGame()
 
     LoadLatchMem ();
     BuildTables ();          // trig tables
+#ifdef MEGA65
+    TraceSetup ();           // (the ray caster's addresses: wl_draw.cpp)
+#endif
     SetupWalls ();
 
     NewViewSize (viewsize);
@@ -1411,7 +1570,7 @@ void NewViewSize (int width)
     else if(viewsize == 20)
         SetViewSize(screenWidth, screenHeight - scaleFactor * STATUSLINES);
     else
-        SetViewSize(width*16*screenWidth/320, (unsigned) (width*16*HEIGHTRATIO*screenHeight/200));
+        SetViewSize((unsigned) ((int32_t) width*16*screenWidth/320), (unsigned) (width*16*HEIGHTRATIO*screenHeight/200));
 }
 
 
@@ -1678,6 +1837,11 @@ static void DemoLoop()
 
 void CheckParameters(int argc, char *argv[])
 {
+#ifdef MEGA65
+    // No command line on the MEGA65: keep the defaults (and leave the usage
+    // text and parsing out of memory).
+    (void) argc; (void) argv;
+#else
     bool hasError = false, showHelp = false;
     bool sampleRateGiven = false, audioBufferGiven = false;
     int defaultSampleRate = param_samplerate;
@@ -1933,6 +2097,7 @@ void CheckParameters(int argc, char *argv[])
 
     if(sampleRateGiven && !audioBufferGiven)
         param_audiobuffer = 2048 / (44100 / param_samplerate);
+#endif
 }
 
 /*
@@ -1943,7 +2108,24 @@ void CheckParameters(int argc, char *argv[])
 ==========================
 */
 
+#ifdef MEGA65
+__attribute__((noinline)) static int wolf_main (int argc, char *argv[]);
+
+//
+// The resident entry point: take the machine over and load the code
+// overlays before anything else, then run the game (in an overlay).
+//
 int main (int argc, char *argv[])
+{
+    m65_startup ("wolf" M65_VSUFFIX ".ovl", "wolf" M65_VSUFFIX ".dat");  // (WOLF1.*, WOLF6.*: per version)
+    __set_heap_limit (__get_heap_max_safe_size ());  // (llvm-mos starts small)
+    return wolf_main (argc, argv);
+}
+
+static int wolf_main (int argc, char *argv[])
+#else
+int main (int argc, char *argv[])
+#endif
 {
 #if defined(_arch_dreamcast)
     DC_Init();

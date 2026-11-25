@@ -10,8 +10,22 @@
     #define MAPPLANES       2
 #endif
 
+#ifdef MEGA65
+// Graphics and audio chunks live in far memory (attic RAM) and stay cached
+// once loaded: all of them fit, so uncaching is a no-op.
+#include "m65_far.h"
+// The map planes are in far memory too; mapptr behaves like word * (see
+// m65_farref.hpp), so MAPSPOT and code walking the planes are unchanged.
+#include "m65_farref.hpp"
+#include "m65_fararray.hpp"
+typedef FarPtr<uint16_t> mapptr;
+#define UNCACHEGRCHUNK(chunk)
+#define UNCACHEAUDIOCHUNK(chunk)
+#else
+typedef word *mapptr;
 #define UNCACHEGRCHUNK(chunk) {if(grsegs[chunk]) {free(grsegs[chunk]); grsegs[chunk]=NULL;}}
 #define UNCACHEAUDIOCHUNK(chunk) {if(audiosegs[chunk]) {free(audiosegs[chunk]); audiosegs[chunk]=NULL;}}
+#endif
 
 //===========================================================================
 
@@ -27,9 +41,13 @@ typedef struct
 
 extern  int   mapon;
 
-extern  word *mapsegs[MAPPLANES];
+extern  mapptr mapsegs[MAPPLANES];
+#ifdef MEGA65
+extern  FarArray<farptr, NUMCHUNKS> grsegs; // (behaves like farptr[NUMCHUNKS])
+#else
 extern  byte *audiosegs[NUMSNDCHUNKS];
 extern  byte *grsegs[NUMCHUNKS];
+#endif
 
 extern  char  extension[5];
 extern  char  graphext[5];

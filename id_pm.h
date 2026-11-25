@@ -13,12 +13,36 @@ extern int PMSoundStart;
 
 extern bool PMSoundInfoPagePadded;
 
+void PM_Startup();
+void PM_Shutdown();
+
+#ifdef MEGA65
+
+// VSWAP stays whole in attic RAM, as loaded: pages are far addresses into it,
+// found through the page offsets in its header (no near page table).
+
+farptr   PM_GetPage (int page);
+uint32_t PM_GetPageSize (int page);
+
+// A wall (or door) texture: from the texture cache in colour RAM when it
+// is there or can be put there (id_pm.cpp), else in place in attic RAM.
+farptr   PM_GetTexture (int wallpic);
+void     PM_NextFrame ();          // (the cache's clock: once per frame drawn)
+
+// A sprite: from the sprite cache in colour RAM when it is there or can be
+// put there (id_pm.cpp), else in place in attic RAM.
+farptr   PM_GetSprite (int shapenum);
+
+static inline farptr PM_GetSound(int soundpagenum)
+{
+    return PM_GetPage(PMSoundStart + soundpagenum);
+}
+
+#else
+
 // ChunksInFile+1 pointers to page starts.
 // The last pointer points one byte after the last page.
 extern uint8_t **PMPages;
-
-void PM_Startup();
-void PM_Shutdown();
 
 static inline uint32_t PM_GetPageSize(int page)
 {
@@ -54,5 +78,7 @@ static inline byte *PM_GetSound(int soundpagenum)
 {
     return PM_GetPage(PMSoundStart + soundpagenum);
 }
+
+#endif
 
 #endif

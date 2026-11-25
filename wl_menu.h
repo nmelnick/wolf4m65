@@ -73,7 +73,11 @@
 #define CTL_Y   86
 #endif
 #define CTL_W   284
+#ifdef MEGA65
+#define CTL_H   73                      // (one more item: Low Detail)
+#else
 #define CTL_H   60
+#endif
 
 #define LSM_X   85
 #define LSM_Y   55

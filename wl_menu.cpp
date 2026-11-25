@@ -121,6 +121,8 @@ CP_itemtype SndMenu[] = {
 
 #ifdef JAPAN
 enum { CTL_MOUSEENABLE, CTL_JOYENABLE, CTL_JOY2BUTTONUNKNOWN, CTL_GAMEPADUNKONWN, CTL_MOUSESENS, CTL_CUSTOMIZE };
+#elif defined(MEGA65)
+enum { CTL_MOUSEENABLE, CTL_MOUSESENS, CTL_JOYENABLE, CTL_CUSTOMIZE, CTL_LOWDETAIL };
 #else
 enum { CTL_MOUSEENABLE, CTL_MOUSESENS, CTL_JOYENABLE, CTL_CUSTOMIZE };
 #endif
@@ -138,6 +140,9 @@ CP_itemtype CtlMenu[] = {
     {0, STR_SENS, MouseSensitivity},
     {0, STR_JOYEN, 0},
     {1, STR_CUSTOM, CustomControls}
+#ifdef MEGA65
+    , {1, "Low Detail", 0}              // (faster: walls traced every other column)
+#endif
 #endif
 };
 
@@ -1498,7 +1503,7 @@ CP_LoadGame (int quick)
     FILE *file;
     int which, exit = 0;
     char name[13];
-    char loadpath[300];
+    char loadpath[SAVEPATHLEN];
 
     strcpy (name, SaveName);
 
@@ -1690,7 +1695,7 @@ CP_SaveGame (int quick)
     int which, exit = 0;
     FILE *file;
     char name[13];
-    char savepath[300];
+    char savepath[SAVEPATHLEN];
     char input[32];
 
     strcpy (name, SaveName);
@@ -1877,6 +1882,13 @@ CP_Control (int)
                 MenuFadeIn ();
                 WaitKeyUp ();
                 break;
+#ifdef MEGA65
+            case CTL_LOWDETAIL:
+                lowdetail ^= 1;
+                DrawCtlScreen ();
+                ShootSnd ();
+                break;
+#endif
         }
     }
     while (which >= 0);
@@ -2062,6 +2074,11 @@ DrawCtlScreen (void)
         VWB_DrawPic (x, y, C_SELECTEDPIC);
     else
         VWB_DrawPic (x, y, C_NOTSELECTEDPIC);
+
+#ifdef MEGA65
+    y = CTL_Y + 3 + CTL_LOWDETAIL * 13;
+    VWB_DrawPic (x, y, lowdetail ? C_SELECTEDPIC : C_NOTSELECTEDPIC);
+#endif
 
     //
     // PICK FIRST AVAILABLE SPOT
@@ -3094,9 +3111,13 @@ UnCacheLump (int lumpstart, int lumpend)
 {
     int i;
 
+#ifdef MEGA65
+    (void) lumpstart; (void) lumpend;   // chunks stay cached (see id_ca.h)
+#else
     for (i = lumpstart; i <= lumpend; i++)
         if (grsegs[i])
             UNCACHEGRCHUNK (i);
+#endif
 }
 
 
@@ -3167,7 +3188,7 @@ SetupControlPanel (void)
 void SetupSaveGames()
 {
     char name[13];
-    char savepath[300];
+    char savepath[SAVEPATHLEN];
 
     strcpy(name, SaveName);
     for(int i = 0; i < 10; i++)
@@ -3216,6 +3237,9 @@ CleanupControlPanel (void)
 #endif
 
     fontnumber = 0;
+#ifdef MEGA65
+    WriteConfig ();                     // (settings kept at once: no one quits a MEGA65)
+#endif
 }
 
 
@@ -3831,13 +3855,23 @@ void
 Message (const char *string)
 {
     int h = 0, w = 0, mw = 0, i, len = (int) strlen(string);
+#ifdef MEGA65
+    // The font is in far memory: measure through VW_MeasurePropString.
+    word fontw, fontheight;
+#else
     fontstruct *font;
+#endif
 
 
     CA_CacheGrChunk (STARTFONT + 1);
     fontnumber = 1;
+#ifdef MEGA65
+    VW_MeasurePropString ("", &fontw, &fontheight);
+    h = fontheight;
+#else
     font = (fontstruct *) grsegs[STARTFONT + fontnumber];
     h = font->height;
+#endif
     for (i = 0; i < len; i++)
     {
         if (string[i] == '\n')
@@ -3845,10 +3879,22 @@ Message (const char *string)
             if (w > mw)
                 mw = w;
             w = 0;
+#ifdef MEGA65
+            h += fontheight;
+#else
             h += font->height;
+#endif
         }
         else
+        {
+#ifdef MEGA65
+            char one[2] = { string[i], 0 };
+            VW_MeasurePropString (one, &fontw, &fontheight);
+            w += fontw;
+#else
             w += font->width[string[i]];
+#endif
+        }
     }
 
     if (w + 10 > mw)
@@ -3991,7 +4037,8 @@ CheckForEpisodes (void)
     struct stat statbuf;
 
     // On Linux like systems, the configdir defaults to $HOME/.wolf4sdl
-#if !defined(_WIN32) && !defined(_arch_dreamcast)
+    // (on the MEGA65 everything is in the SD card's root directory: no configdir)
+#if !defined(_WIN32) && !defined(_arch_dreamcast) && !defined(MEGA65)
     if(configdir[0] == 0)
     {
         // Set config location to home directory for multi-user support

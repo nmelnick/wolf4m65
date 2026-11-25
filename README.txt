@@ -2,6 +2,8 @@ Wolf4SDL by Moritz "Ripper" Kroll (http://www.chaos-software.de.vu)
 Original Wolfenstein 3D by id Software (http://www.idsoftware.com)
 =============================================================================
 
+[MEGA65 Readme](./mega65/README.md)
+
 Wolf4SDL is an open-source port of id Software's classic first-person shooter
 Wolfenstein 3D to the cross-platform multimedia library "Simple DirectMedia
 Layer (SDL)" (http://www.libsdl.org). It is meant to keep the original feel
